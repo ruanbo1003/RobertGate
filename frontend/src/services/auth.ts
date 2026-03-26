@@ -19,9 +19,18 @@ async function request<T>(
       headers: { 'Content-Type': 'application/json' },
       ...options,
     })
-    return await res.json()
-  } catch {
-    return { code: 5000, data: null as T, message: '网络连接失败，请稍后重试' }
+
+    if (!res.ok && res.status >= 500) {
+      return { code: 5000, data: null as T, message: '服务器异常，请稍后重试' }
+    }
+
+    const data = await res.json()
+    return data
+  } catch (err) {
+    if (err instanceof TypeError) {
+      return { code: 5001, data: null as T, message: '网络连接失败，请检查网络' }
+    }
+    return { code: 5000, data: null as T, message: '请求失败，请稍后重试' }
   }
 }
 

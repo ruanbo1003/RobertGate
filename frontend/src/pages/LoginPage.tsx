@@ -6,9 +6,11 @@ import FormInput from '../components/ui/FormInput'
 import Button from '../components/ui/Button'
 import Divider from '../components/ui/Divider'
 import { login } from '../services/auth'
+import { useAuth } from '../store/AuthContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const auth = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -23,7 +25,7 @@ export default function LoginPage() {
     setLoading(false)
 
     if (res.code === 0) {
-      localStorage.setItem('token', res.data.access_token)
+      auth.login(res.data.access_token, res.data.user)
       navigate('/')
     } else {
       setError(res.message)
@@ -68,7 +70,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="text-error text-sm font-body text-center">{error}</p>
+          <p className="text-error text-sm font-body text-center" role="alert">{error}</p>
         )}
 
         <div className="flex flex-col gap-6">

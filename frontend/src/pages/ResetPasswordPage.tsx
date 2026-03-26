@@ -4,7 +4,9 @@ import { Lock, ArrowLeft } from 'lucide-react'
 import AuthLayout from '../components/layout/AuthLayout'
 import FormInput from '../components/ui/FormInput'
 import Button from '../components/ui/Button'
+import PasswordStrength from '../components/ui/PasswordStrength'
 import { resetPassword } from '../services/auth'
+import { validatePassword, validateConfirmPassword } from '../utils/validators'
 
 export default function ResetPasswordPage() {
   const navigate = useNavigate()
@@ -19,12 +21,10 @@ export default function ResetPasswordPage() {
 
   const validate = () => {
     const errs: Record<string, string> = {}
-    if (!/^(?=.*[a-zA-Z])(?=.*\d).{8,32}$/.test(password)) {
-      errs.password = '密码需 8-32 字符，包含字母和数字'
-    }
-    if (password !== confirmPassword) {
-      errs.confirmPassword = '两次密码不一致'
-    }
+    const p = validatePassword(password)
+    if (p) errs.password = p
+    const c = validateConfirmPassword(password, confirmPassword)
+    if (c) errs.confirmPassword = c
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -47,12 +47,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <AuthLayout
-        heroTitle={"Set New\nPassword."}
-        heroSubtitle="Choose a strong password to keep your account secure."
-        quote="Security is not a product, but a process."
-        quoteAuthor="Bruce Schneier"
-      >
+      <AuthLayout>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <span className="font-heading text-xs font-semibold text-error tracking-[2px]">
@@ -69,7 +64,7 @@ export default function ResetPasswordPage() {
           <div className="flex flex-col gap-4">
             <Link
               to="/forgot-password"
-              className="flex items-center justify-center gap-2 w-full h-[52px] bg-accent hover:bg-accent-hover text-text-on-dark font-heading text-xs font-semibold tracking-[1px] uppercase transition-colors"
+              className="flex items-center justify-center gap-2 w-full h-[52px] bg-accent hover:bg-accent-hover text-text-on-dark font-heading text-xs font-semibold tracking-[1px] uppercase rounded-[var(--radius-sm)] transition-colors"
             >
               Request New Link
             </Link>
@@ -122,18 +117,21 @@ export default function ResetPasswordPage() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-5">
-            <FormInput
-              label="New Password"
-              type="password"
-              placeholder="Min. 8 characters"
-              value={password}
-              onChange={(v) => {
-                setPassword(v)
-                setErrors((prev) => ({ ...prev, password: '' }))
-              }}
-              error={errors.password}
-            />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <FormInput
+                label="New Password"
+                type="password"
+                placeholder="Min. 8 characters"
+                value={password}
+                onChange={(v) => {
+                  setPassword(v)
+                  setErrors((prev) => ({ ...prev, password: '' }))
+                }}
+                error={errors.password}
+              />
+              <PasswordStrength password={password} />
+            </div>
             <FormInput
               label="Confirm Password"
               type="password"
@@ -148,7 +146,7 @@ export default function ResetPasswordPage() {
           </div>
 
           {errors.form && (
-            <p className="text-error text-sm font-body text-center">
+            <p className="text-error text-sm font-body text-center" role="alert">
               {errors.form}
             </p>
           )}

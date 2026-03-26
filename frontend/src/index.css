@@ -3,23 +3,34 @@
 
 @theme {
   --color-page: #E8EDF5;
+  --color-page-alt: #DCE4F0;
   --color-card: #FFFFFF;
   --color-dark: #2E3A4D;
   --color-dark-surface: #374559;
   --color-accent: #C05A3C;
   --color-accent-hover: #A84B30;
+  --color-accent-light: #F0DDD7;
   --color-border: #D1CCC4;
+  --color-border-focus: #9B9489;
   --color-border-dark: #4A5568;
   --color-input: #FFFFFF;
+  --color-input-bg: #FAFAF8;
   --color-text-primary: #1a1a1a;
   --color-text-secondary: #555555;
   --color-text-muted: #888888;
   --color-text-on-dark: #F5F3EF;
   --color-success: #4A7C59;
+  --color-success-light: #E8F5E9;
   --color-error: #B54A4A;
+  --color-error-light: #FDEAEA;
+  --color-warning: #C8842E;
 
   --font-heading: 'Sora', sans-serif;
   --font-body: 'DM Sans', sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
 }
 
 *, *::before, *::after {
@@ -37,4 +48,11 @@ body {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

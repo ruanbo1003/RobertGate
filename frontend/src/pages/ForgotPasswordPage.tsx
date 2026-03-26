@@ -5,6 +5,7 @@ import AuthLayout from '../components/layout/AuthLayout'
 import FormInput from '../components/ui/FormInput'
 import Button from '../components/ui/Button'
 import { forgotPassword } from '../services/auth'
+import { validateEmail } from '../utils/validators'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -14,8 +15,9 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('请输入有效的邮箱地址')
+    const emailErr = validateEmail(email)
+    if (emailErr) {
+      setError(emailErr)
       return
     }
 
