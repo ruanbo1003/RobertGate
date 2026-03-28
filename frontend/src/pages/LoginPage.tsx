@@ -34,17 +34,17 @@ export default function LoginPage() {
 
   return (
     <AuthLayout>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-        <div className="flex flex-col gap-2">
-          <span className="font-heading text-xs font-semibold text-accent tracking-[2px]">
-            LOGIN
-          </span>
-          <h2 className="font-heading text-[28px] font-bold text-text-primary">
-            Sign in to your account
+      <form onSubmit={handleSubmit} className="flex flex-col gap-7">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
+            Sign in
           </h2>
+          <p className="font-sans text-sm text-muted-foreground">
+            Enter your credentials to access your account
+          </p>
         </div>
 
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           <FormInput
             label="Email"
             type="email"
@@ -61,7 +61,7 @@ export default function LoginPage() {
             rightLabel={
               <Link
                 to="/forgot-password"
-                className="font-body text-[13px] font-medium text-accent hover:text-accent-hover transition-colors"
+                className="font-sans text-[13px] font-medium text-primary hover:text-primary-hover transition-colors"
               >
                 Forgot password?
               </Link>
@@ -70,19 +70,19 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p className="text-error text-sm font-body text-center" role="alert">{error}</p>
+          <p className="text-error text-sm font-medium text-center" role="alert">{error}</p>
         )}
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           <Button type="submit" icon={ArrowRight} loading={loading}>
             Sign In
           </Button>
           <Divider />
-          <p className="text-center font-body text-sm text-text-secondary">
+          <p className="text-center font-sans text-sm text-muted-foreground">
             Don't have an account?{' '}
             <Link
               to="/register"
-              className="font-heading font-semibold text-accent hover:text-accent-hover transition-colors"
+              className="font-semibold text-primary hover:text-primary-hover transition-colors"
             >
               Create one
             </Link>

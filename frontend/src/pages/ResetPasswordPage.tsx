@@ -48,36 +48,29 @@ export default function ResetPasswordPage() {
   if (!token) {
     return (
       <AuthLayout>
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <span className="font-heading text-xs font-semibold text-error tracking-[2px]">
-              INVALID
-            </span>
-            <h2 className="font-heading text-[28px] font-bold text-text-primary">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
               Invalid reset link
             </h2>
+            <p className="font-sans text-sm text-muted-foreground leading-relaxed">
+              This link is invalid or has expired. Please request a new one.
+            </p>
           </div>
-          <p className="font-body text-sm text-text-secondary leading-relaxed">
-            This password reset link is invalid or has expired. Please request a
-            new one.
-          </p>
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3">
             <Link
               to="/forgot-password"
-              className="flex items-center justify-center gap-2 w-full h-[52px] bg-accent hover:bg-accent-hover text-text-on-dark font-heading text-xs font-semibold tracking-[1px] uppercase rounded-[var(--radius-sm)] transition-colors"
+              className="flex items-center justify-center gap-2 w-full h-11 bg-primary hover:bg-primary-hover text-text-on-primary font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-colors"
             >
               Request New Link
             </Link>
             <div className="flex items-center justify-center gap-1.5">
-              <ArrowLeft size={14} className="text-text-secondary" />
-              <span className="font-body text-sm text-text-secondary">
-                Back to{' '}
-              </span>
+              <ArrowLeft size={14} className="text-muted-foreground" />
               <Link
                 to="/login"
-                className="font-heading text-sm font-semibold text-accent hover:text-accent-hover transition-colors"
+                className="font-sans text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
               >
-                Sign in
+                Back to Sign in
               </Link>
             </div>
           </div>
@@ -89,35 +82,28 @@ export default function ResetPasswordPage() {
   return (
     <AuthLayout>
       {success ? (
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <span className="font-heading text-xs font-semibold text-success tracking-[2px]">
-              SUCCESS
-            </span>
-            <h2 className="font-heading text-[28px] font-bold text-text-primary">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
               Password updated
             </h2>
+            <p className="font-sans text-sm text-muted-foreground leading-relaxed">
+              Your password has been reset. Redirecting to login...
+            </p>
           </div>
-          <p className="font-body text-sm text-text-secondary leading-relaxed">
-            Your password has been reset successfully. Redirecting to login...
-          </p>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <span className="font-heading text-xs font-semibold text-accent tracking-[2px]">
-              NEW PASSWORD
-            </span>
-            <h2 className="font-heading text-[28px] font-bold text-text-primary">
-              Set your new password
+        <form onSubmit={handleSubmit} className="flex flex-col gap-7">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
+              Set new password
             </h2>
-            <p className="font-body text-sm text-text-secondary leading-relaxed">
-              Your new password must be at least 8 characters and contain both
-              letters and numbers.
+            <p className="font-sans text-sm text-muted-foreground leading-relaxed">
+              Must be at least 8 characters with letters and numbers.
             </p>
           </div>
 
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3.5">
             <div className="flex flex-col gap-1.5">
               <FormInput
                 label="New Password"
@@ -146,25 +132,22 @@ export default function ResetPasswordPage() {
           </div>
 
           {errors.form && (
-            <p className="text-error text-sm font-body text-center" role="alert">
+            <p className="text-error text-sm font-medium text-center" role="alert">
               {errors.form}
             </p>
           )}
 
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
             <Button type="submit" icon={Lock} loading={loading}>
               Reset Password
             </Button>
             <div className="flex items-center justify-center gap-1.5">
-              <ArrowLeft size={14} className="text-text-secondary" />
-              <span className="font-body text-sm text-text-secondary">
-                Back to{' '}
-              </span>
+              <ArrowLeft size={14} className="text-muted-foreground" />
               <Link
                 to="/login"
-                className="font-heading text-sm font-semibold text-accent hover:text-accent-hover transition-colors"
+                className="font-sans text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
               >
-                Sign in
+                Back to Sign in
               </Link>
             </div>
           </div>

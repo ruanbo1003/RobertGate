@@ -1,0 +1,64 @@
+import { Link } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { ArrowLeft, Search } from 'lucide-react'
+
+export default function NotFoundPage() {
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center p-6 bg-page relative overflow-hidden">
+      <div
+        className="absolute inset-0 opacity-[0.4]"
+        style={{
+          backgroundImage:
+            'linear-gradient(to right, #E2E8F0 1px, transparent 1px), linear-gradient(to bottom, #E2E8F0 1px, transparent 1px)',
+          backgroundSize: '48px 48px',
+        }}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6 }}
+        className="absolute select-none pointer-events-none"
+      >
+        <span
+          className="font-sans font-extrabold text-primary/[0.05] leading-none"
+          style={{ fontSize: 'clamp(200px, 40vw, 500px)' }}
+        >
+          404
+        </span>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
+        className="relative z-10 flex flex-col items-center text-center max-w-md"
+      >
+        <motion.div
+          initial={{ rotate: -10 }}
+          animate={{ rotate: [0, -6, 6, -3, 0] }}
+          transition={{ delay: 0.4, duration: 0.6 }}
+          className="w-14 h-14 rounded-[var(--radius-md)] bg-primary flex items-center justify-center mb-6"
+        >
+          <Search size={24} className="text-white" />
+        </motion.div>
+
+        <h1 className="font-sans text-4xl md:text-5xl font-extrabold text-text-primary mb-3 leading-tight tracking-tight">
+          Page not found
+        </h1>
+
+        <p className="font-sans text-base text-muted-foreground leading-relaxed mb-8">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+
+        <Link
+          to="/"
+          className="flex items-center justify-center gap-2 h-11 px-8 bg-primary hover:bg-primary-hover text-white font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-colors"
+        >
+          <ArrowLeft size={16} />
+          Back to Home
+        </Link>
+      </motion.div>
+    </div>
+  )
+}

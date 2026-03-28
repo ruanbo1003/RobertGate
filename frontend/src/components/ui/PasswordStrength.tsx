@@ -16,6 +16,12 @@ const widthMap = {
   strong: 'w-full',
 }
 
+const textColorMap = {
+  weak: 'text-error',
+  medium: 'text-warning',
+  strong: 'text-success',
+}
+
 export default function PasswordStrength({ password }: PasswordStrengthProps) {
   if (!password) return null
 
@@ -23,20 +29,12 @@ export default function PasswordStrength({ password }: PasswordStrengthProps) {
 
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 h-1 bg-border/50 rounded-full overflow-hidden">
+      <div className="flex-1 h-1 bg-border rounded-full overflow-hidden">
         <div
-          className={`h-full ${colorMap[strength]} ${widthMap[strength]} rounded-full transition-all duration-300`}
+          className={`h-full ${colorMap[strength]} ${widthMap[strength]} rounded-full transition-all duration-200`}
         />
       </div>
-      <span
-        className={`font-heading text-[10px] font-semibold tracking-[1px] uppercase ${
-          strength === 'strong'
-            ? 'text-success'
-            : strength === 'medium'
-              ? 'text-warning'
-              : 'text-error'
-        }`}
-      >
+      <span className={`font-sans text-xs font-semibold ${textColorMap[strength]}`}>
         {label}
       </span>
     </div>

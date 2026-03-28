@@ -36,55 +36,44 @@ export default function ForgotPasswordPage() {
   return (
     <AuthLayout>
       {sent ? (
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <span className="font-heading text-xs font-semibold text-success tracking-[2px]">
-              SENT
-            </span>
-            <h2 className="font-heading text-[28px] font-bold text-text-primary">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
               Check your email
             </h2>
+            <p className="font-sans text-sm text-muted-foreground leading-relaxed">
+              We've sent a password reset link to{' '}
+              <span className="font-semibold text-text-primary">{email}</span>.
+            </p>
           </div>
-          <p className="font-body text-sm text-text-secondary leading-relaxed">
-            We've sent a password reset link to{' '}
-            <span className="font-semibold text-text-primary">{email}</span>.
-            Please check your inbox and follow the instructions.
-          </p>
-          <p className="font-body text-xs text-text-muted">
+          <p className="font-sans text-xs text-muted-foreground">
             Didn't receive the email? Check your spam folder or{' '}
             <button
               onClick={() => setSent(false)}
-              className="text-accent hover:text-accent-hover font-semibold transition-colors"
+              className="text-primary hover:text-primary-hover font-semibold transition-colors cursor-pointer"
             >
               try again
             </button>
             .
           </p>
           <div className="flex items-center justify-center gap-1.5 mt-2">
-            <ArrowLeft size={14} className="text-text-secondary" />
-            <span className="font-body text-sm text-text-secondary">
-              Back to{' '}
-            </span>
+            <ArrowLeft size={14} className="text-muted-foreground" />
             <Link
               to="/login"
-              className="font-heading text-sm font-semibold text-accent hover:text-accent-hover transition-colors"
+              className="font-sans text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
             >
-              Sign in
+              Back to Sign in
             </Link>
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-          <div className="flex flex-col gap-2">
-            <span className="font-heading text-xs font-semibold text-accent tracking-[2px]">
-              RESET
-            </span>
-            <h2 className="font-heading text-[28px] font-bold text-text-primary">
-              Reset your password
+        <form onSubmit={handleSubmit} className="flex flex-col gap-7">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
+              Reset password
             </h2>
-            <p className="font-body text-sm text-text-secondary leading-relaxed">
-              Enter the email address associated with your account and we'll
-              send you a link to reset your password.
+            <p className="font-sans text-sm text-muted-foreground leading-relaxed">
+              Enter your email and we'll send you a reset link.
             </p>
           </div>
 
@@ -100,20 +89,17 @@ export default function ForgotPasswordPage() {
             error={error}
           />
 
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-5">
             <Button type="submit" icon={Mail} loading={loading}>
               Send Reset Link
             </Button>
             <div className="flex items-center justify-center gap-1.5">
-              <ArrowLeft size={14} className="text-text-secondary" />
-              <span className="font-body text-sm text-text-secondary">
-                Back to{' '}
-              </span>
+              <ArrowLeft size={14} className="text-muted-foreground" />
               <Link
                 to="/login"
-                className="font-heading text-sm font-semibold text-accent hover:text-accent-hover transition-colors"
+                className="font-sans text-sm font-semibold text-primary hover:text-primary-hover transition-colors"
               >
-                Sign in
+                Back to Sign in
               </Link>
             </div>
           </div>

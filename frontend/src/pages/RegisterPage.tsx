@@ -39,8 +39,7 @@ export default function RegisterPage() {
 
   const debouncedCheckUsername = useDebouncedCallback(async (value: unknown) => {
     const v = value as string
-    const err = validateUsername(v)
-    if (err) return
+    if (validateUsername(v)) return
     setChecking((p) => ({ ...p, username: true }))
     const res = await checkUsername(v)
     setChecking((p) => ({ ...p, username: false }))
@@ -54,8 +53,7 @@ export default function RegisterPage() {
 
   const debouncedCheckEmail = useDebouncedCallback(async (value: unknown) => {
     const v = value as string
-    const err = validateEmail(v)
-    if (err) return
+    if (validateEmail(v)) return
     setChecking((p) => ({ ...p, email: true }))
     const res = await checkEmail(v)
     setChecking((p) => ({ ...p, email: false }))
@@ -99,17 +97,17 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-7">
-        <div className="flex flex-col gap-2">
-          <span className="font-heading text-xs font-semibold text-accent tracking-[2px]">
-            REGISTER
-          </span>
-          <h2 className="font-heading text-[28px] font-bold text-text-primary">
-            Create your account
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-sans text-2xl font-bold text-text-primary tracking-tight">
+            Create account
           </h2>
+          <p className="font-sans text-sm text-muted-foreground">
+            Fill in the details to get started
+          </p>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3.5">
           <FormInput
             label="Username"
             placeholder="your_username"
@@ -167,21 +165,21 @@ export default function RegisterPage() {
         </div>
 
         {errors.form && (
-          <p className="text-error text-sm font-body text-center" role="alert">
+          <p className="text-error text-sm font-medium text-center" role="alert">
             {errors.form}
           </p>
         )}
 
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           <Button type="submit" icon={UserPlus} loading={loading}>
             Create Account
           </Button>
           <Divider />
-          <p className="text-center font-body text-sm text-text-secondary">
+          <p className="text-center font-sans text-sm text-muted-foreground">
             Already have an account?{' '}
             <Link
               to="/login"
-              className="font-heading font-semibold text-accent hover:text-accent-hover transition-colors"
+              className="font-semibold text-primary hover:text-primary-hover transition-colors"
             >
               Sign in
             </Link>
