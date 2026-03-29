@@ -1,0 +1,134 @@
+/*
+ * RobertGate Design Tokens
+ *
+ * Style: Flat Design + subtle shadows
+ * Palette: Trust blue (#2563EB) + Orange CTA (#EA580C)
+ * Font: Plus Jakarta Sans (single family)
+ *
+ * Usage: referenced by Tailwind v4 @theme in index.css
+ * Naming: --rg-{category}-{name}
+ */
+
+:root {
+  /* ==================== Colors ==================== */
+
+  /* Primary - Trust blue */
+  --rg-color-primary: #2563EB;
+  --rg-color-primary-hover: #1D4ED8;
+  --rg-color-primary-light: #DBEAFE;
+  --rg-color-secondary: #3B82F6;
+
+  /* Accent - Orange CTA */
+  --rg-color-accent: #EA580C;
+  --rg-color-accent-hover: #C2410C;
+  --rg-color-accent-light: #FFF7ED;
+
+  /* Surfaces */
+  --rg-color-page: #F8FAFC;
+  --rg-color-page-alt: #F1F5F9;
+  --rg-color-card: #FFFFFF;
+  --rg-color-dark: #1E3A5F;
+  --rg-color-dark-surface: #2A4A72;
+
+  /* Text */
+  --rg-color-text-primary: #1E293B;
+  --rg-color-text-secondary: #475569;
+  --rg-color-text-muted: #64748B;
+  --rg-color-text-on-dark: #F8FAFC;
+  --rg-color-text-on-primary: #FFFFFF;
+
+  /* Borders */
+  --rg-color-border: #E2E8F0;
+  --rg-color-border-focus: #2563EB;
+  --rg-color-border-dark: #3D5A80;
+
+  /* Inputs */
+  --rg-color-input: #FFFFFF;
+  --rg-color-input-bg: #F8FAFC;
+
+  /* Semantic */
+  --rg-color-success: #16A34A;
+  --rg-color-success-light: #F0FDF4;
+  --rg-color-error: #DC2626;
+  --rg-color-error-light: #FEF2F2;
+  --rg-color-warning: #D97706;
+  --rg-color-warning-light: #FFFBEB;
+  --rg-color-muted: #E9EFF8;
+  --rg-color-muted-foreground: #64748B;
+  --rg-color-ring: #2563EB;
+  --rg-color-destructive: #DC2626;
+  --rg-color-destructive-foreground: #FFFFFF;
+
+  /* ==================== Typography ==================== */
+
+  --rg-font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+
+  /* Font sizes */
+  --rg-text-xs: 0.75rem;     /* 12px */
+  --rg-text-sm: 0.875rem;    /* 14px */
+  --rg-text-base: 1rem;      /* 16px */
+  --rg-text-lg: 1.125rem;    /* 18px */
+  --rg-text-xl: 1.25rem;     /* 20px */
+  --rg-text-2xl: 1.5rem;     /* 24px */
+  --rg-text-3xl: 1.875rem;   /* 30px */
+  --rg-text-4xl: 2.25rem;    /* 36px */
+
+  /* Font weights */
+  --rg-font-regular: 400;
+  --rg-font-medium: 500;
+  --rg-font-semibold: 600;
+  --rg-font-bold: 700;
+  --rg-font-extrabold: 800;
+
+  /* Line heights */
+  --rg-leading-tight: 1.1;
+  --rg-leading-snug: 1.3;
+  --rg-leading-normal: 1.5;
+  --rg-leading-relaxed: 1.625;
+
+  /* ==================== Spacing ==================== */
+
+  --rg-space-1: 0.25rem;     /* 4px */
+  --rg-space-1-5: 0.375rem;  /* 6px */
+  --rg-space-2: 0.5rem;      /* 8px */
+  --rg-space-3: 0.75rem;     /* 12px */
+  --rg-space-3-5: 0.875rem;  /* 14px */
+  --rg-space-4: 1rem;        /* 16px */
+  --rg-space-5: 1.25rem;     /* 20px */
+  --rg-space-6: 1.5rem;      /* 24px */
+  --rg-space-8: 2rem;        /* 32px */
+  --rg-space-10: 2.5rem;     /* 40px */
+  --rg-space-12: 3rem;       /* 48px */
+
+  /* ==================== Radii ==================== */
+
+  --rg-radius-sm: 8px;
+  --rg-radius-md: 12px;
+  --rg-radius-lg: 16px;
+  --rg-radius-full: 9999px;
+
+  /* ==================== Shadows ==================== */
+
+  --rg-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --rg-shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.04);
+  --rg-shadow-lg: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 32px rgba(0, 0, 0, 0.06);
+  --rg-shadow-button-hover: 0 4px 12px rgba(37, 99, 235, 0.25);
+
+  /* ==================== Transitions ==================== */
+
+  --rg-duration-fast: 150ms;
+  --rg-duration-normal: 200ms;
+  --rg-duration-slow: 300ms;
+  --rg-easing-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --rg-easing-in: cubic-bezier(0.4, 0, 1, 1);
+  --rg-easing-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ==================== Z-Index ==================== */
+
+  --rg-z-base: 0;
+  --rg-z-dropdown: 10;
+  --rg-z-sticky: 20;
+  --rg-z-overlay: 30;
+  --rg-z-modal: 40;
+  --rg-z-toast: 50;
+}

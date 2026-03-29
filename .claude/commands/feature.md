@@ -14,9 +14,9 @@
 - 如果文件不存在，提示用户先创建 PRD
 
 ### Step 2 - UI 设计
-- 根据 PRD 分析涉及的页面和交互
+- 根据 `docs/prd/$ARGUMENTS.md` 分析涉及的页面和交互
 - **严格遵循 `.claude/rules/ui-style.md` 中的设计规范**
-- 用 Pencil MCP 设计 UI 草图
+- 用 Pencil MCP 设计 UI 效果图
 - 列出所有 UI 组件清单，等待确认
 
 **暂停，等待用户确认 UI 设计后继续**

@@ -21,7 +21,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="relative flex w-full max-w-[1000px] h-auto md:h-[660px] bg-card rounded-[var(--radius-lg)] shadow-[0_1px_3px_rgba(0,0,0,0.08),0_8px_32px_rgba(0,0,0,0.06)] overflow-hidden"
+        className="relative flex w-full max-w-[1000px] h-auto md:h-[660px] bg-card rounded-[var(--radius-lg)] shadow-lg overflow-hidden"
       >
         {/* Left Branding Panel - 40% */}
         <div className="hidden md:flex w-[40%] bg-dark flex-col justify-between p-10 lg:p-12">

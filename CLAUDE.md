@@ -47,13 +47,14 @@ uv run pytest --cov=app                # 测试覆盖率
 ```
 
 ## 开发工作流
-1. 使用 `/feature <需求描述>` 启动新功能开发
-2. 流程：UI 设计 -> API 定义 -> 前端实现 -> 后端实现 -> 联调
-3. 每个步骤完成后暂停，等待确认再继续
+1. 使用 `/idea <name>` 需求探索
+2. 使用 `/feature <name>` 启动新功能开发
+3. 流程：UI 设计 -> API 定义 -> 前端实现 -> 后端实现 -> 联调
+4. 每个步骤完成后暂停，等待确认再继续
 
 ## 工作流提醒
 - 实现新功能前必须调用 brainstorming skill，先探索需求和设计方案
-- 前端开发前必须调用 frontend-design skill，确保高质量的设计输出
+- 前端开发前必须调用 ui-ux-pro-max skill，确保高质量的设计输出
 - 实现功能或修复 bug 前优先调用 test-driven-development skill
 
 ## 规范速查
