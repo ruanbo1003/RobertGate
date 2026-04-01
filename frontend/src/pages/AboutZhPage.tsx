@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, MapPin, GraduationCap, Briefcase, Code2, Database, Cloud, Brain, Users } from 'lucide-react'
+import { Mail, Phone, MapPin, GraduationCap, Briefcase, Code2, Database, Cloud, Brain, Users } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 
@@ -11,7 +11,7 @@ const stagger = {
 
 const fadeUp = {
   hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' as const } },
 }
 
 const skillGroups = [
@@ -34,16 +34,16 @@ const skillGroups = [
     items: ['Docker', 'Kubernetes', 'AWS', '阿里云', 'CI/CD', 'Linux'],
   },
   {
-    icon: Brain,
-    title: 'AI & 工具',
-    color: 'bg-warning-light text-warning',
-    items: ['Claude Code', 'Vibe Coding', 'AI Agents', 'MCP', 'Skills', 'Prompt Engineering'],
-  },
-  {
     icon: Users,
     title: '架构设计 & 团队管理',
     color: 'bg-primary-light text-primary-hover',
     items: ['系统架构', '微服务', 'DDD', '技术负责人', '团队管理', 'Code Review'],
+  },
+  {
+    icon: Brain,
+    title: 'AI & 工具',
+    color: 'bg-warning-light text-warning',
+    items: ['Claude Code', 'Vibe Coding', 'Skills', 'Prompt', 'LLM API'],
   },
 ]
 
@@ -154,6 +154,13 @@ export default function AboutZhPage() {
               >
                 <Mail size={15} />
                 ruanbodev@gmail.com
+              </a>
+              <a
+                href="tel:+8618575651049"
+                className="flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary-hover transition-colors"
+              >
+                <Phone size={15} />
+                +86-18575651049
               </a>
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <MapPin size={15} />
