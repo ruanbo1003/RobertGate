@@ -17,99 +17,99 @@ const fadeUp = {
 const skillGroups = [
   {
     icon: Code2,
-    title: 'Languages & Frameworks',
+    title: '编程语言 & 框架',
     color: 'bg-primary/10 text-primary',
     items: ['Python', 'C/C++14', 'Golang', 'TypeScript', 'Vue', 'React', 'RESTful API'],
   },
   {
     icon: Database,
-    title: 'Data & Middleware',
+    title: '数据 & 中间件',
     color: 'bg-accent-light text-accent',
     items: ['MySQL', 'Redis', 'MongoDB', 'Kafka', 'RabbitMQ', 'ELK', 'Nginx'],
   },
   {
     icon: Cloud,
-    title: 'DevOps & Cloud',
+    title: 'DevOps & 云服务',
     color: 'bg-success-light text-success',
-    items: ['Docker', 'Kubernetes', 'AWS', 'Aliyun', 'CI/CD', 'Linux'],
+    items: ['Docker', 'Kubernetes', 'AWS', '阿里云', 'CI/CD', 'Linux'],
   },
   {
     icon: Brain,
-    title: 'AI & Tooling',
+    title: 'AI & 工具',
     color: 'bg-warning-light text-warning',
     items: ['Claude Code', 'Vibe Coding', 'AI Agents', 'MCP', 'Skills', 'Prompt Engineering'],
   },
   {
     icon: Users,
-    title: 'Architecture & Leadership',
+    title: '架构设计 & 团队管理',
     color: 'bg-primary-light text-primary-hover',
-    items: ['System Design', 'Microservices', 'DDD', 'Tech Lead', 'Team Management', 'Code Review'],
+    items: ['系统架构', '微服务', 'DDD', '技术负责人', '团队管理', 'Code Review'],
   },
 ]
 
 const experiences = [
   {
-    role: 'Staff Software Engineer',
-    company: 'Lotus Robotics',
-    period: 'Sep 2021 — May 2025',
+    role: '资深软件工程师',
+    company: '路特斯汽车机器人',
+    period: '2021.09 — 2025.05',
     highlights: [
-      'Led system architecture design for 8 projects (SaaS & web apps) from 0 to 1',
-      'Architected microservices and defined tech standards across teams',
-      'Built and managed DevOps system supporting 20+ projects',
-      'Developed microservices deployed to Aliyun Cloud',
-      'Built vehicle remote control platform server',
+      '主导 8 个项目的系统架构设计（SaaS 平台 & Web 应用），从 0 到 1 交付',
+      '制定团队技术规范，设计微服务架构方案',
+      '搭建并维护 DevOps 体系，支撑 20+ 个项目的持续交付',
+      '开发微服务并部署至阿里云',
+      '构建车辆远程控制平台服务端',
     ],
   },
   {
-    role: 'Staff Software Engineer',
-    company: 'QiAnXin Tech',
-    period: 'Nov 2018 — Sep 2021',
+    role: '资深软件工程师',
+    company: '奇安信科技',
+    period: '2018.11 — 2021.09',
     highlights: [
-      'Built scalable microservices with Golang & Python on K8s',
-      'Implemented API Gateway (Nginx) for load balancing & auth',
-      'Designed data processing platform supporting 10K QPS',
-      'Led a team of 6 engineers; reduced dev time by 20% via DevOps',
+      '使用 Golang & Python 构建可扩展的微服务，部署于 K8s',
+      '基于 Nginx 实现 API 网关，支持负载均衡、缓存、认证和日志',
+      '设计数据处理平台及 RESTful API，支撑 10K QPS',
+      '带领 6 人团队，搭建 DevOps 体系，研发效率提升 20%',
     ],
   },
   {
-    role: 'Senior Software Engineer',
-    company: 'BaBa-meeting Tech',
-    period: 'Jan 2018 — Oct 2018',
+    role: '高级软件工程师',
+    company: 'BaBa-meeting（创业公司）',
+    period: '2018.01 — 2018.10',
     highlights: [
-      'Designed RESTful & RPC services with Python and C++',
-      'Containerized services with Docker, deployed on AWS',
+      '使用 Python 和 C++ 设计 RESTful & RPC 服务',
+      '基于 Docker 构建服务并部署至 AWS',
     ],
   },
   {
-    role: 'Senior C++ Engineer',
-    company: 'Kingsoft Seasun Games',
-    period: 'Aug 2015 — Dec 2017',
+    role: '高级 C++ 工程师',
+    company: '金山西山居',
+    period: '2015.08 — 2017.12',
     highlights: [
-      'Built network layer & protocol for online game servers',
-      'Designed low-latency real-time engine supporting 3000 players',
-      'Created testing & ops automation tools',
+      '实现网络游戏服务端与客户端的网络层及通信协议',
+      '设计低延迟实时游戏引擎（游戏服务器、网关、IM），支持 3000 人同时在线',
+      '开发自动化测试和运维工具，提升团队效率',
     ],
   },
   {
-    role: 'C++ Software Engineer',
-    company: 'FeiYin Games',
-    period: 'Apr 2013 — Aug 2015',
+    role: 'C++ 软件工程师',
+    company: '飞音游戏',
+    period: '2013.04 — 2015.08',
     highlights: [
-      'Implemented low-latency multiplayer game systems on Linux',
-      'Collaborated cross-functionally to deliver on schedule',
+      '基于 Linux C++ 实现多人在线游戏的低延迟系统',
+      '跨团队协作，按时交付高质量软件',
     ],
   },
   {
-    role: 'Embedded Software Engineer',
-    company: 'Delta Electronics',
-    period: 'Aug 2011 — Mar 2013',
+    role: '嵌入式软件工程师',
+    company: '台达电子',
+    period: '2011.08 — 2013.03',
     highlights: [
-      'Developed router firmware and web management interfaces',
+      '开发路由器固件及 Web 管理界面',
     ],
   },
 ]
 
-export default function AboutPage() {
+export default function AboutZhPage() {
   return (
     <div className="min-h-screen flex flex-col bg-page relative">
       <div
@@ -134,19 +134,18 @@ export default function AboutPage() {
           <motion.div variants={fadeUp} className="flex flex-col gap-4">
             <div className="flex items-baseline gap-3">
               <h1 className="font-sans text-4xl md:text-5xl font-extrabold text-primary tracking-tight leading-[1.1]">
-                Robert Ruan
+                阮波
               </h1>
               <Link
-                to="/about/zh"
+                to="/about"
                 className="text-xs font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-2 py-0.5 rounded-[var(--radius-sm)] transition-colors"
               >
-                中文
+                EN
               </Link>
             </div>
             <p className="font-sans text-lg text-muted-foreground leading-relaxed max-w-2xl">
-              Software engineer with 14 years of experience building scalable,
-              high-performance systems — from game engines to SaaS platforms,
-              microservices to DevOps pipelines.
+              14 年软件工程经验，专注于高性能、可扩展系统的设计与实现——从游戏引擎到
+              SaaS 平台，从微服务架构到 DevOps 工程化。
             </p>
             <div className="flex flex-wrap items-center gap-4 mt-1">
               <a
@@ -158,11 +157,11 @@ export default function AboutPage() {
               </a>
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <MapPin size={15} />
-                China
+                中国
               </span>
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <GraduationCap size={15} />
-                B.CS. USTB, 2007–2011
+                北京科技大学 自动化 本科 2007–2011
               </span>
             </div>
           </motion.div>
@@ -179,7 +178,7 @@ export default function AboutPage() {
             variants={fadeUp}
             className="font-sans text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-5"
           >
-            Skills
+            专业技能
           </motion.h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {skillGroups.map(({ icon: Icon, title, color, items }) => (
@@ -220,10 +219,9 @@ export default function AboutPage() {
             variants={fadeUp}
             className="font-sans text-xs font-semibold text-muted-foreground tracking-widest uppercase mb-5"
           >
-            Experience
+            工作经历
           </motion.h2>
           <div className="relative">
-            {/* Timeline line */}
             <div className="absolute left-[7px] top-2 bottom-2 w-px bg-border" />
 
             <div className="flex flex-col gap-8">
@@ -233,7 +231,6 @@ export default function AboutPage() {
                   variants={fadeUp}
                   className="relative pl-8"
                 >
-                  {/* Timeline dot */}
                   <div className="absolute left-0 top-1.5 w-[15px] h-[15px] rounded-full border-2 border-primary bg-card" />
 
                   <div className="flex flex-col gap-2">

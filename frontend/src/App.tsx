@@ -8,6 +8,7 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import NotFoundPage from './pages/NotFoundPage'
 import NotImplementedPage from './pages/NotImplementedPage'
 import AboutPage from './pages/AboutPage'
+import AboutZhPage from './pages/AboutZhPage'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/ai-tools" element={<NotImplementedPage />} />
           <Route path="/bookmarks" element={<NotImplementedPage />} />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/about/zh" element={<AboutZhPage />} />
           <Route path="/not-implemented" element={<NotImplementedPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
