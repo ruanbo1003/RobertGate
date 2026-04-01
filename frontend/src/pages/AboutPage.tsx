@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, Phone, MapPin, GraduationCap, Briefcase, Code2, Database, Cloud, Brain, Users } from 'lucide-react'
+import { Mail, Phone, MapPin, GraduationCap, Briefcase, Code2, Database, Cloud, Brain, Users, Download } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 
@@ -136,9 +136,17 @@ export default function AboutPage() {
               <h1 className="font-sans text-4xl md:text-5xl font-extrabold text-primary tracking-tight leading-[1.1]">
                 Robert Ruan
               </h1>
+              <a
+                href="/resume/en.pdf"
+                download="Robert Ruan - Software Engineer.pdf"
+                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors flex items-center gap-1"
+              >
+                <Download size={12} />
+                Resume
+              </a>
               <Link
                 to="/about/zh"
-                className="text-xs font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-2 py-0.5 rounded-[var(--radius-sm)] transition-colors"
+                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors"
               >
                 中文
               </Link>
