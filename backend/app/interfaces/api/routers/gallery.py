@@ -53,8 +53,7 @@ def _ensure_thumbnail(filepath: Path) -> None:
         img.close()
         if thumb.mode in ("RGBA", "P"):
             thumb = thumb.convert("RGB")
-        # Save without EXIF to avoid double-rotation
-        thumb.save(thumb_path, quality=80, exif=b"")
+        thumb.save(thumb_path, quality=80)
         thumb.close()
     except Exception:
         pass

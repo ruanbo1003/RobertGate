@@ -203,6 +203,7 @@ function PhotoCard({ photo, onClick }: { photo: Photo; onClick: () => void }) {
           src={photo.thumbnail_url}
           alt={photo.filename}
           onLoad={() => setLoaded(true)}
+          style={{ imageOrientation: 'none' }}
           className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-[1.02] ${
             loaded ? 'opacity-100' : 'opacity-0'
           }`}
