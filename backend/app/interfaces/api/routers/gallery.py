@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -9,6 +8,8 @@ from app.interfaces.api.response import error, success
 router = APIRouter(prefix="/gallery", tags=["gallery"])
 
 PHOTO_DIR = Path("/home/ubuntu/photos")
+THUMB_DIR = PHOTO_DIR / "thumbs"
+THUMB_WIDTH = 400
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 _dimension_cache: dict[str, tuple[int, int]] = {}
@@ -27,6 +28,25 @@ def _get_dimensions(filepath: Path) -> tuple[int, int]:
         return (0, 0)
 
 
+def _ensure_thumbnail(filepath: Path) -> None:
+    """Generate thumbnail if it doesn't exist."""
+    thumb_path = THUMB_DIR / filepath.name
+    if thumb_path.exists():
+        return
+    try:
+        THUMB_DIR.mkdir(exist_ok=True)
+        with Image.open(filepath) as img:
+            ratio = THUMB_WIDTH / img.width
+            thumb_height = int(img.height * ratio)
+            thumb = img.resize((THUMB_WIDTH, thumb_height), Image.LANCZOS)
+            # Convert RGBA to RGB for JPEG
+            if thumb.mode in ("RGBA", "P"):
+                thumb = thumb.convert("RGB")
+            thumb.save(thumb_path, quality=80)
+    except Exception:
+        pass
+
+
 @router.get("/photos")
 async def list_photos():
     if not PHOTO_DIR.exists():
@@ -40,7 +60,9 @@ async def list_photos():
             [
                 f
                 for f in PHOTO_DIR.iterdir()
-                if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS
+                if f.is_file()
+                and f.suffix.lower() in SUPPORTED_EXTENSIONS
+                and f.name != "thumbs"
             ],
             key=lambda f: f.stat().st_mtime,
             reverse=True,
@@ -51,10 +73,12 @@ async def list_photos():
     photos = []
     for f in files:
         width, height = _get_dimensions(f)
+        _ensure_thumbnail(f)
         photos.append(
             {
                 "filename": f.name,
                 "url": f"/photos/{f.name}",
+                "thumbnail_url": f"/photos/thumbs/{f.name}",
                 "width": width,
                 "height": height,
             }

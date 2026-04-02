@@ -1,6 +1,7 @@
 export interface Photo {
   filename: string
   url: string
+  thumbnail_url: string
   width: number
   height: number
 }

@@ -200,7 +200,7 @@ function PhotoCard({ photo, onClick }: { photo: Photo; onClick: () => void }) {
     >
       {inView && (
         <img
-          src={photo.url}
+          src={photo.thumbnail_url}
           alt={photo.filename}
           onLoad={() => setLoaded(true)}
           className={`w-full h-full object-cover transition-all duration-300 group-hover:scale-[1.02] ${
