@@ -9,6 +9,7 @@ import NotFoundPage from './pages/NotFoundPage'
 import NotImplementedPage from './pages/NotImplementedPage'
 import AboutPage from './pages/AboutPage'
 import AboutZhPage from './pages/AboutZhPage'
+import GalleryPage from './pages/GalleryPage'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
           <Route path="/dashboard" element={<NotImplementedPage />} />
           <Route path="/ai-tools" element={<NotImplementedPage />} />
           <Route path="/bookmarks" element={<NotImplementedPage />} />
+          <Route path="/gallery" element={<GalleryPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/about/zh" element={<AboutZhPage />} />
           <Route path="/not-implemented" element={<NotImplementedPage />} />

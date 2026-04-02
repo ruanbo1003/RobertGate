@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app.infrastructure.database.config import init_db
-from app.interfaces.api.routers import auth
+from app.interfaces.api.routers import auth, gallery
 
 
 @asynccontextmanager
@@ -26,6 +26,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(gallery.router, prefix="/api/v1")
 
 
 @app.exception_handler(ValidationError)

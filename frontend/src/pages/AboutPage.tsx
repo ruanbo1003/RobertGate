@@ -139,14 +139,14 @@ export default function AboutPage() {
               <a
                 href="/resume/en.pdf"
                 download="Robert Ruan - Software Engineer.pdf"
-                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors flex items-center gap-1"
+                className="text-sm font-semibold text-primary border border-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-[var(--radius-sm)] transition-colors flex items-center gap-1.5"
               >
-                <Download size={12} />
+                <Download size={14} />
                 Resume
               </a>
               <Link
                 to="/about/zh"
-                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors"
+                className="text-sm font-semibold text-primary border border-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-[var(--radius-sm)] transition-colors"
               >
                 中文
               </Link>

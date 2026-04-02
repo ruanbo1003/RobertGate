@@ -92,7 +92,7 @@ const experiences = [
   },
   {
     role: 'C++ 软件工程师',
-    company: '飞音游戏',
+    company: '菲音游戏',
     period: '2013.04 — 2015.08',
     highlights: [
       '基于 Linux C++ 实现多人在线游戏的低延迟系统',
@@ -139,14 +139,14 @@ export default function AboutZhPage() {
               <a
                 href="/resume/zh.pdf"
                 download="阮波-后端全栈开发-18575651049.pdf"
-                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors flex items-center gap-1"
+                className="text-sm font-semibold text-primary border border-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-[var(--radius-sm)] transition-colors flex items-center gap-1.5"
               >
-                <Download size={12} />
+                <Download size={14} />
                 简历
               </a>
               <Link
                 to="/about"
-                className="text-sm font-medium text-muted-foreground hover:text-primary border border-border hover:border-primary/30 px-3 py-1 rounded-[var(--radius-sm)] transition-colors"
+                className="text-sm font-semibold text-primary border border-primary hover:bg-primary hover:text-white px-4 py-1.5 rounded-[var(--radius-sm)] transition-colors"
               >
                 EN
               </Link>
