@@ -15,14 +15,24 @@ SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 _dimension_cache: dict[str, tuple[int, int]] = {}
 
 
+def _load_and_orient(filepath: Path) -> Image.Image:
+    """Open image and apply EXIF orientation to pixel data."""
+    img = Image.open(filepath)
+    img.load()  # Force read all pixel data from disk
+    oriented = ImageOps.exif_transpose(img)
+    if oriented is not img:
+        img.close()
+    return oriented
+
+
 def _get_dimensions(filepath: Path) -> tuple[int, int]:
     key = str(filepath)
     if key in _dimension_cache:
         return _dimension_cache[key]
     try:
-        with Image.open(filepath) as img:
-            img = ImageOps.exif_transpose(img)
-            dims = img.size
+        img = _load_and_orient(filepath)
+        dims = img.size  # width, height after rotation
+        img.close()
         _dimension_cache[key] = dims
         return dims
     except Exception:
@@ -36,15 +46,16 @@ def _ensure_thumbnail(filepath: Path) -> None:
         return
     try:
         THUMB_DIR.mkdir(exist_ok=True)
-        with Image.open(filepath) as img:
-            img = ImageOps.exif_transpose(img)
-            ratio = THUMB_WIDTH / img.width
-            thumb_height = int(img.height * ratio)
-            thumb = img.resize((THUMB_WIDTH, thumb_height), Image.LANCZOS)
-            # Convert RGBA to RGB for JPEG
-            if thumb.mode in ("RGBA", "P"):
-                thumb = thumb.convert("RGB")
-            thumb.save(thumb_path, quality=80)
+        img = _load_and_orient(filepath)
+        ratio = THUMB_WIDTH / img.width
+        thumb_height = int(img.height * ratio)
+        thumb = img.resize((THUMB_WIDTH, thumb_height), Image.LANCZOS)
+        img.close()
+        if thumb.mode in ("RGBA", "P"):
+            thumb = thumb.convert("RGB")
+        # Save without EXIF to avoid double-rotation
+        thumb.save(thumb_path, quality=80, exif=b"")
+        thumb.close()
     except Exception:
         pass
 
