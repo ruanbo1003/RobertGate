@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -7,7 +8,7 @@ from app.interfaces.api.response import error, success
 
 router = APIRouter(prefix="/gallery", tags=["gallery"])
 
-PHOTO_DIR = Path("/home/ubuntu/photos")
+PHOTO_DIR = Path(os.environ.get("PHOTO_DIR", "/home/ubuntu/photos"))
 THUMB_DIR = PHOTO_DIR / "thumbs"
 THUMB_WIDTH = 400
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}

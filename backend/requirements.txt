@@ -7,3 +7,6 @@ passlib[bcrypt]==1.7.4
 sqlalchemy==2.0.35
 aiosqlite==0.20.0
 python-multipart==0.0.12
+greenlet==3.3.2
+pillow==12.2.0
+bcrypt==5.0.0
