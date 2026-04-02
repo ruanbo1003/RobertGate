@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter
-from PIL import Image
+from PIL import Image, ImageOps
 
 from app.interfaces.api.response import error, success
 
@@ -21,6 +21,7 @@ def _get_dimensions(filepath: Path) -> tuple[int, int]:
         return _dimension_cache[key]
     try:
         with Image.open(filepath) as img:
+            img = ImageOps.exif_transpose(img)
             dims = img.size
         _dimension_cache[key] = dims
         return dims
@@ -36,6 +37,7 @@ def _ensure_thumbnail(filepath: Path) -> None:
     try:
         THUMB_DIR.mkdir(exist_ok=True)
         with Image.open(filepath) as img:
+            img = ImageOps.exif_transpose(img)
             ratio = THUMB_WIDTH / img.width
             thumb_height = int(img.height * ratio)
             thumb = img.resize((THUMB_WIDTH, thumb_height), Image.LANCZOS)
