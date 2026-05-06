@@ -1,42 +1,39 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
-from app.infrastructure.database.config import init_db
-from app.interfaces.api.routers import auth, gallery
+from app.core.logger import setup_logging
+from app.core.middleware import ApiLoggingMiddleware, ErrorHandlerMiddleware
+from app.core.setting import get_settings
+
+from app.api.auth.router import router as auth_router
+from app.api.gallery.router import router as gallery_router
+from app.api.util.router import router as util_router
+
+settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_db()
+    setup_logging()
     yield
 
 
-app = FastAPI(title="RobertGate API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="RobertGate API", version="0.2.0", lifespan=lifespan)
 
+# Middleware (last added = first executed)
+app.add_middleware(ApiLoggingMiddleware)
+app.add_middleware(ErrorHandlerMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(gallery.router, prefix="/api/v1")
-
-
-@app.exception_handler(ValidationError)
-async def validation_error_handler(request: Request, exc: ValidationError):
-    first_error = exc.errors()[0]
-    return JSONResponse(
-        content={"code": 2000, "data": None, "message": first_error.get("msg", "参数错误")},
-    )
-
-
-@app.get("/api/v1/health")
-async def health():
-    return {"code": 0, "data": {"status": "ok"}, "message": "ok"}
+# Routers
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(gallery_router, prefix="/api/v1")
+app.include_router(util_router, prefix="/api/v1")

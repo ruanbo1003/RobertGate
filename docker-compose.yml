@@ -1,4 +1,30 @@
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: robertgate
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docs/photos:/data/photos
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/robertgate
+      - PHOTO_DIR=/data/photos
+      - JWT_SECRET=change-this-in-production
+    depends_on:
+      - db
+
   frontend:
     build:
       context: .
@@ -10,13 +36,5 @@ services:
     depends_on:
       - backend
 
-  backend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./docs/photos:/data/photos
-    environment:
-      - PHOTO_DIR=/data/photos
+volumes:
+  pgdata:

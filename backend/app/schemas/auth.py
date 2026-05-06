@@ -48,21 +48,3 @@ class ResetPasswordRequest(BaseModel):
         if not re.search(r"[a-zA-Z]", v) or not re.search(r"\d", v):
             raise ValueError("密码需要包含字母和数字")
         return v
-
-
-class UserResponse(BaseModel):
-    id: str
-    username: str
-    email: str
-    created_at: str
-
-
-class AuthDataResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    expires_in: int = 86400
-    user: UserResponse
-
-
-class AvailabilityResponse(BaseModel):
-    available: bool

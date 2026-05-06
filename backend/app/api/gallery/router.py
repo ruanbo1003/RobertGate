@@ -1,16 +1,17 @@
-import os
 from pathlib import Path
 
 from fastapi import APIRouter
 from PIL import Image, ImageOps
 
-from app.interfaces.api.response import error, success
+from app.core.response import error, success
+from app.core.setting import get_settings
 
 router = APIRouter(prefix="/gallery", tags=["gallery"])
 
-PHOTO_DIR = Path(os.environ.get("PHOTO_DIR", "/home/ubuntu/photos"))
+settings = get_settings()
+PHOTO_DIR = Path(settings.PHOTO_DIR)
 THUMB_DIR = PHOTO_DIR / "thumbs"
-THUMB_WIDTH = 400
+THUMB_WIDTH = settings.THUMB_WIDTH
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
 _dimension_cache: dict[str, tuple[int, int]] = {}
@@ -19,7 +20,7 @@ _dimension_cache: dict[str, tuple[int, int]] = {}
 def _load_and_orient(filepath: Path) -> Image.Image:
     """Open image and apply EXIF orientation to pixel data."""
     img = Image.open(filepath)
-    img.load()  # Force read all pixel data from disk
+    img.load()
     oriented = ImageOps.exif_transpose(img)
     if oriented is not img:
         img.close()
@@ -32,7 +33,7 @@ def _get_dimensions(filepath: Path) -> tuple[int, int]:
         return _dimension_cache[key]
     try:
         img = _load_and_orient(filepath)
-        dims = img.size  # width, height after rotation
+        dims = img.size
         img.close()
         _dimension_cache[key] = dims
         return dims
