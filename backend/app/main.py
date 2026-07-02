@@ -7,6 +7,7 @@ from app.core.logger import setup_logging
 from app.core.middleware import ApiLoggingMiddleware, ErrorHandlerMiddleware
 from app.core.setting import get_settings
 
+from app.api.ai_tools.router import router as ai_tools_router
 from app.api.auth.router import router as auth_router
 from app.api.gallery.router import router as gallery_router
 from app.api.util.router import router as util_router
@@ -36,4 +37,5 @@ app.add_middleware(
 # Routers
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(gallery_router, prefix="/api/v1")
+app.include_router(ai_tools_router, prefix="/api/v1")
 app.include_router(util_router, prefix="/api/v1")
