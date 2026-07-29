@@ -3,195 +3,197 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException, ServerException
-from app.models.hanzi_entry import HanziEntry
-from app.service.hanzi_service import HanziService, _extract_chinese_chars
+from app.core.exceptions import ParamException
+from app.models.hanzi_character import HanziCharacter
+from app.models.hanzi_level import HanziLevel
+from app.models.hanzi_progress import HanziUserProgress
+from app.service.hanzi_service import HanziService
 
 
 @pytest.fixture
-def repo():
+def level_repo():
     return AsyncMock()
 
 
 @pytest.fixture
-def ai():
+def character_repo():
     return AsyncMock()
 
 
 @pytest.fixture
-def service(repo, ai):
-    return HanziService(repo=repo, ai=ai)
+def progress_repo():
+    return AsyncMock()
 
 
-def _make_entry(char: str, learned: bool = False) -> HanziEntry:
-    return HanziEntry(
-        id=f"id-{char}",
-        user_id="u1",
-        char=char,
-        learned=learned,
-        created_at=datetime.now(timezone.utc),
-        learned_at=datetime.now(timezone.utc) if learned else None,
+@pytest.fixture
+def service(level_repo, character_repo, progress_repo):
+    return HanziService(
+        level_repo=level_repo,
+        character_repo=character_repo,
+        progress_repo=progress_repo,
     )
 
 
-# --------- 提取汉字 ---------
+def _level(id_: str, name: str, order: int = 0) -> HanziLevel:
+    now = datetime.now(timezone.utc)
+    return HanziLevel(
+        id=id_,
+        name=name,
+        description=None,
+        order_index=order,
+        created_at=now,
+        updated_at=now,
+    )
 
 
-def test_extract_dedupes_and_preserves_order():
-    result = _extract_chinese_chars("Hello 汉字 World 中华 汉字!")
-    assert result == ["汉", "字", "中", "华"]
+def _character(id_: str, level_id: str, char: str, order: int = 0) -> HanziCharacter:
+    now = datetime.now(timezone.utc)
+    return HanziCharacter(
+        id=id_,
+        level_id=level_id,
+        char=char,
+        pinyin="p",
+        meaning=None,
+        order_index=order,
+        created_at=now,
+        updated_at=now,
+    )
 
 
-def test_extract_ignores_non_chinese():
-    assert _extract_chinese_chars("abc123!@#") == []
-
-
-# --------- 字库 ---------
+# ---------- list_levels_with_progress ----------
 
 
 @pytest.mark.asyncio
-async def test_list_library(service, repo):
-    repo.list_by_user.return_value = [
-        _make_entry("汉", learned=True),
-        _make_entry("字", learned=False),
+async def test_list_levels_returns_totals_and_learned(
+    service, level_repo, character_repo, progress_repo
+):
+    level_repo.list_all.return_value = [_level("l1", "L1", 1), _level("l2", "L2", 2)]
+    character_repo.count_by_levels.return_value = {"l1": 20, "l2": 15}
+    progress_repo.learned_count_by_levels.return_value = {"l1": 8}
+
+    result = await service.list_levels_with_progress("u1")
+
+    assert len(result["levels"]) == 2
+    assert result["levels"][0]["total"] == 20
+    assert result["levels"][0]["learned"] == 8
+    assert result["levels"][1]["total"] == 15
+    assert result["levels"][1]["learned"] == 0  # missing in map defaults to 0
+
+
+@pytest.mark.asyncio
+async def test_list_levels_empty(service, level_repo, character_repo, progress_repo):
+    level_repo.list_all.return_value = []
+    character_repo.count_by_levels.return_value = {}
+    progress_repo.learned_count_by_levels.return_value = {}
+
+    result = await service.list_levels_with_progress("u1")
+    assert result["levels"] == []
+
+
+# ---------- list_characters_for_user ----------
+
+
+@pytest.mark.asyncio
+async def test_list_characters_marks_learned_state(
+    service, level_repo, character_repo, progress_repo
+):
+    now = datetime.now(timezone.utc)
+    level_repo.find_by_id.return_value = _level("l1", "L1")
+    character_repo.list_by_level.return_value = [
+        _character("c1", "l1", "人", 0),
+        _character("c2", "l1", "口", 1),
     ]
-    result = await service.list_library("u1")
-    assert result["total"] == 2
-    assert result["learned"] == 1
-    assert len(result["items"]) == 2
-    assert result["items"][0]["char"] == "汉"
-    assert result["items"][0]["learned"] is True
+    progress_repo.progress_map_by_level.return_value = {
+        "c1": HanziUserProgress(
+            id="p1", user_id="u1", character_id="c1", learned_at=now
+        )
+    }
+
+    result = await service.list_characters_for_user("u1", "l1")
+
+    assert result["level"]["id"] == "l1"
+    assert len(result["characters"]) == 2
+    assert result["characters"][0]["learned"] is True
+    assert result["characters"][0]["learned_at"] is not None
+    assert result["characters"][1]["learned"] is False
+    assert result["characters"][1]["learned_at"] is None
 
 
 @pytest.mark.asyncio
-async def test_add_from_text_dedupes_and_records_duplicates(service, repo):
-    repo.existing_chars.return_value = {"汉"}
-    repo.list_by_user.return_value = [_make_entry("汉"), _make_entry("字")]
+async def test_list_characters_level_not_found(service, level_repo):
+    level_repo.find_by_id.return_value = None
+    with pytest.raises(ParamException) as exc:
+        await service.list_characters_for_user("u1", "nope")
+    assert exc.value.code == 2010
 
-    result = await service.add_from_text("u1", "汉字 汉字")
 
-    assert result["added"] == ["字"]
-    assert result["duplicated"] == ["汉"]
-    assert result["total"] == 2
-    repo.add_many.assert_awaited_once()
+# ---------- update_progress ----------
 
 
 @pytest.mark.asyncio
-async def test_add_from_text_no_valid_chars(service):
-    with pytest.raises(ParamException) as exc_info:
-        await service.add_from_text("u1", "abc123")
-    assert exc_info.value.code == 2004
+async def test_update_progress_mark_learned_new(
+    service, character_repo, progress_repo
+):
+    character_repo.find_by_id.return_value = _character("c1", "l1", "人")
+    progress_repo.find.return_value = None
 
-
-@pytest.mark.asyncio
-async def test_add_from_text_all_duplicated(service, repo):
-    repo.existing_chars.return_value = {"汉", "字"}
-    repo.list_by_user.return_value = [_make_entry("汉"), _make_entry("字")]
-
-    result = await service.add_from_text("u1", "汉字")
-
-    assert result["added"] == []
-    assert result["duplicated"] == ["汉", "字"]
-    repo.add_many.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_update_learned_success(service, repo):
-    entry = _make_entry("汉", learned=False)
-    repo.find.return_value = entry
-
-    result = await service.update_learned("u1", "汉", True)
+    result = await service.update_progress("u1", "c1", True)
 
     assert result["learned"] is True
-    assert result["learned_at"] != ""
-    assert entry.learned is True
+    assert result["learned_at"] is not None
+    progress_repo.save.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_update_learned_not_in_library(service, repo):
-    repo.find.return_value = None
-    with pytest.raises(ParamException) as exc_info:
-        await service.update_learned("u1", "汉", True)
-    assert exc_info.value.code == 2005
+async def test_update_progress_mark_learned_idempotent(
+    service, character_repo, progress_repo
+):
+    now = datetime.now(timezone.utc)
+    character_repo.find_by_id.return_value = _character("c1", "l1", "人")
+    progress_repo.find.return_value = HanziUserProgress(
+        id="p1", user_id="u1", character_id="c1", learned_at=now
+    )
+
+    result = await service.update_progress("u1", "c1", True)
+
+    assert result["learned"] is True
+    progress_repo.save.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_update_learned_unmark(service, repo):
-    entry = _make_entry("汉", learned=True)
-    repo.find.return_value = entry
+async def test_update_progress_unmark_deletes(
+    service, character_repo, progress_repo
+):
+    now = datetime.now(timezone.utc)
+    character_repo.find_by_id.return_value = _character("c1", "l1", "人")
+    existing = HanziUserProgress(
+        id="p1", user_id="u1", character_id="c1", learned_at=now
+    )
+    progress_repo.find.return_value = existing
 
-    result = await service.update_learned("u1", "汉", False)
+    result = await service.update_progress("u1", "c1", False)
 
     assert result["learned"] is False
-    assert result["learned_at"] == ""
+    assert result["learned_at"] is None
+    progress_repo.delete.assert_awaited_once_with(existing)
 
 
 @pytest.mark.asyncio
-async def test_delete_success(service, repo):
-    entry = _make_entry("汉")
-    repo.find.return_value = entry
-    repo.list_by_user.return_value = []
+async def test_update_progress_unmark_idempotent(
+    service, character_repo, progress_repo
+):
+    character_repo.find_by_id.return_value = _character("c1", "l1", "人")
+    progress_repo.find.return_value = None
 
-    result = await service.delete("u1", "汉")
+    result = await service.update_progress("u1", "c1", False)
 
-    assert result["char"] == "汉"
-    assert result["total"] == 0
-    repo.delete.assert_awaited_once_with(entry)
-
-
-@pytest.mark.asyncio
-async def test_delete_not_in_library(service, repo):
-    repo.find.return_value = None
-    with pytest.raises(ParamException) as exc_info:
-        await service.delete("u1", "汉")
-    assert exc_info.value.code == 2005
-
-
-# --------- AI 内容 ---------
+    assert result["learned"] is False
+    progress_repo.delete.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_character_info_success(service, ai):
-    ai.character_info.return_value = {
-        "pinyin": "hàn",
-        "words": ["汉字"],
-        "sentence": "汉字很美。",
-        "sentence_pinyin": "hàn zì hěn měi",
-    }
-
-    result = await service.character_info("汉")
-
-    assert result["char"] == "汉"
-    assert result["pinyin"] == "hàn"
-    assert result["words"] == ["汉字"]
-
-
-@pytest.mark.asyncio
-async def test_character_info_ai_failure(service, ai):
-    ai.character_info.side_effect = RuntimeError("model down")
-    with pytest.raises(ServerException) as exc_info:
-        await service.character_info("汉")
-    assert exc_info.value.code == 5001
-
-
-@pytest.mark.asyncio
-async def test_compose_sentence_computes_out_of_vocab(service, ai):
-    ai.compose_sentence.return_value = {
-        "sentence": "汉字是中华瑰宝。",
-        "pinyin": "hàn zì shì zhōng huá guī bǎo",
-        "translation": "Chinese characters are treasures.",
-    }
-
-    result = await service.compose_sentence(["汉", "字", "是", "中", "华"])
-
-    # 瑰、宝 不在已学，应作为库外字返回
-    assert set(result["out_of_vocab"]) == {"瑰", "宝"}
-    assert result["sentence"] == "汉字是中华瑰宝。"
-
-
-@pytest.mark.asyncio
-async def test_compose_sentence_ai_failure(service, ai):
-    ai.compose_sentence.side_effect = RuntimeError("model down")
-    with pytest.raises(ServerException) as exc_info:
-        await service.compose_sentence(["汉", "字", "是", "中", "华"])
-    assert exc_info.value.code == 5001
+async def test_update_progress_character_not_found(service, character_repo):
+    character_repo.find_by_id.return_value = None
+    with pytest.raises(ParamException) as exc:
+        await service.update_progress("u1", "nope", True)
+    assert exc.value.code == 2010

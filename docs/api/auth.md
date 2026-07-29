@@ -85,77 +85,10 @@
 | code | message | 说明 |
 |------|---------|------|
 | 1001 | 邮箱或密码错误 | 不区分具体原因，防止枚举 |
-| 1002 | 账号已被锁定，请稍后再试 | 连续失败 5 次，锁定 15 分钟 |
 
 ---
 
-## 3. 请求密码重置
-
-**POST** `/api/v1/auth/forgot-password`
-
-### 请求
-```json
-{
-  "email": "string"
-}
-```
-
-### 响应
-
-成功 — 无论邮箱是否存在，均返回成功（防止枚举）：
-```json
-{
-  "code": 0,
-  "data": null,
-  "message": "如果该邮箱已注册，重置链接已发送"
-}
-```
-
-失败：
-| code | message | 说明 |
-|------|---------|------|
-| 2002 | 邮箱格式无效 | 格式校验失败 |
-| 5001 | 邮件发送失败，请稍后重试 | 邮件服务异常 |
-
-### 邮件内容
-- 包含重置链接：`{FRONTEND_URL}/reset-password?token={reset_token}`
-- token 有效期 30 分钟
-- 一次性使用
-
----
-
-## 4. 重置密码
-
-**POST** `/api/v1/auth/reset-password`
-
-### 请求
-```json
-{
-  "token": "string     // 重置链接中的 token",
-  "password": "string  // 新密码，8-32字符，至少包含字母和数字"
-}
-```
-
-### 响应
-
-成功：
-```json
-{
-  "code": 0,
-  "data": null,
-  "message": "密码重置成功"
-}
-```
-
-失败：
-| code | message | 说明 |
-|------|---------|------|
-| 1003 | 重置链接无效或已过期 | token 不存在、已使用或超过 30 分钟 |
-| 2003 | 密码格式无效 | 不符合规则 |
-
----
-
-## 5. 检查用户名可用性
+## 3. 检查用户名可用性
 
 **GET** `/api/v1/auth/check-username/{username}`
 
@@ -181,7 +114,7 @@
 
 ---
 
-## 6. 检查邮箱可用性
+## 4. 检查邮箱可用性
 
 **GET** `/api/v1/auth/check-email/{email}`
 
@@ -220,8 +153,6 @@ Authorization: Bearer <access_token>
 |------|------|
 | login | 5 次/分钟/IP |
 | register | 3 次/分钟/IP |
-| forgot-password | 3 次/分钟/IP |
-| reset-password | 5 次/分钟/IP |
 | check-username | 10 次/分钟/IP |
 | check-email | 10 次/分钟/IP |
 

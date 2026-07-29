@@ -30,21 +30,3 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: EmailStr
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str
-
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, v: str) -> str:
-        if not 8 <= len(v) <= 32:
-            raise ValueError("密码需要 8-32 个字符")
-        if not re.search(r"[a-zA-Z]", v) or not re.search(r"\d", v):
-            raise ValueError("密码需要包含字母和数字")
-        return v

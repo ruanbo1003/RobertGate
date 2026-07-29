@@ -1,7 +1,10 @@
+export type UserRole = 'user' | 'admin'
+
 export interface User {
   id: string
   username: string
   email: string
+  role: UserRole
   created_at?: string
 }
 
@@ -26,15 +29,6 @@ export interface RegisterRequest {
 
 export interface LoginRequest {
   email: string
-  password: string
-}
-
-export interface ForgotPasswordRequest {
-  email: string
-}
-
-export interface ResetPasswordRequest {
-  token: string
   password: string
 }
 

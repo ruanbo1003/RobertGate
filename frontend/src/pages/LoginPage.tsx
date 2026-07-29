@@ -58,14 +58,6 @@ export default function LoginPage() {
             placeholder="••••••••"
             value={password}
             onChange={setPassword}
-            rightLabel={
-              <Link
-                to="/forgot-password"
-                className="font-sans text-[13px] font-medium text-primary hover:text-primary-hover transition-colors"
-              >
-                Forgot password?
-              </Link>
-            }
           />
         </div>
 

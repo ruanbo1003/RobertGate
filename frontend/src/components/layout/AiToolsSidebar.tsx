@@ -18,15 +18,7 @@ interface MenuItem {
 
 const menu: MenuItem[] = [
   { to: '/ai-tools/translate', label: '翻译 / 英文优化', icon: Languages },
-  {
-    label: '汉字学习',
-    icon: BookOpen,
-    children: [
-      { to: '/ai-tools/hanzi/library', label: '字库管理' },
-      { to: '/ai-tools/hanzi/learn', label: '逐字学习' },
-      { to: '/ai-tools/hanzi/sentence', label: '句子学习' },
-    ],
-  },
+  { to: '/ai-tools/hanzi', label: '汉字学习', icon: BookOpen },
   {
     label: '英文启蒙',
     icon: GraduationCap,
@@ -40,14 +32,9 @@ const menu: MenuItem[] = [
 
 export default function AiToolsSidebar() {
   const location = useLocation()
-  // 展开状态：默认展开「汉字学习」；其他收起
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
-    const init: Record<string, boolean> = {
-      汉字学习: location.pathname.startsWith('/ai-tools/hanzi') || true,
-      英文启蒙: location.pathname.startsWith('/ai-tools/english'),
-    }
-    return init
-  })
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
+    英文启蒙: location.pathname.startsWith('/ai-tools/english'),
+  }))
 
   const toggle = (label: string) => {
     setExpanded((p) => ({ ...p, [label]: !p[label] }))

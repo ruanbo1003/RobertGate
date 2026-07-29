@@ -16,53 +16,7 @@ export interface TranslateResponse {
   result: string
 }
 
-// --- 汉字字库 ---
-export interface HanziItem {
-  char: string
-  learned: boolean
-  created_at: string
-  learned_at: string | null
-}
-
-export interface HanziLibraryResponse {
-  total: number
-  learned: number
-  items: HanziItem[]
-}
-
-export interface AddHanziResponse {
-  added: string[]
-  duplicated: string[]
-  total: number
-}
-
-export interface UpdateHanziResponse {
-  char: string
-  learned: boolean
-  learned_at: string
-}
-
-export interface DeleteHanziResponse {
-  char: string
-  total: number
-}
-
-// --- 单字信息 ---
-export interface CharacterInfoResponse {
-  char: string
-  pinyin: string
-  words: string[]
-  sentence: string
-  sentence_pinyin: string
-}
-
-// --- 句子学习 ---
-export interface SentenceResponse {
-  sentence: string
-  pinyin: string
-  translation: string
-  out_of_vocab: string[]
-}
+// --- 汉字学习相关类型已迁移到 types/hanzi.ts（Level 化重构） ---
 
 // --- 英文启蒙 ---
 export interface EnglishWord {

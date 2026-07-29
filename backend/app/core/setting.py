@@ -1,6 +1,9 @@
 from functools import lru_cache
-
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+env = os.environ.get("ENV", "local")
 
 
 class Settings(BaseSettings):
@@ -25,7 +28,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=f".env.{env}",
         env_file_encoding="utf-8",
         case_sensitive=True,
     )

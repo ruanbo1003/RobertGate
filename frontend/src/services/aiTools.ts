@@ -3,20 +3,14 @@
 
 import type { ApiResponse } from '../types/auth'
 import type {
-  AddHanziResponse,
-  CharacterInfoResponse,
-  DeleteHanziResponse,
   EnglishThemesResponse,
-  HanziLibraryResponse,
   QuizResponse,
-  SentenceResponse,
   Text2ImageResponse,
   TranslateAction,
   TranslateResponse,
-  UpdateHanziResponse,
 } from '../types/aiTools'
 
-const API_BASE = '/api/v1'
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1`
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem('token')
@@ -58,49 +52,7 @@ export function translate(
   })
 }
 
-// --- 汉字字库 ---
-export function getHanziLibrary(): Promise<ApiResponse<HanziLibraryResponse>> {
-  return request('/hanzi/library')
-}
-
-export function addHanzi(text: string): Promise<ApiResponse<AddHanziResponse>> {
-  return request('/hanzi/library', {
-    method: 'POST',
-    body: JSON.stringify({ text }),
-  })
-}
-
-export function updateHanzi(
-  char: string,
-  learned: boolean
-): Promise<ApiResponse<UpdateHanziResponse>> {
-  return request(`/hanzi/library/${encodeURIComponent(char)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ learned }),
-  })
-}
-
-export function deleteHanzi(char: string): Promise<ApiResponse<DeleteHanziResponse>> {
-  return request(`/hanzi/library/${encodeURIComponent(char)}`, {
-    method: 'DELETE',
-  })
-}
-
-// --- 单字信息 ---
-export function getCharacterInfo(char: string): Promise<ApiResponse<CharacterInfoResponse>> {
-  return request('/ai/character-info', {
-    method: 'POST',
-    body: JSON.stringify({ char }),
-  })
-}
-
-// --- 句子学习 ---
-export function getSentence(knownChars: string[]): Promise<ApiResponse<SentenceResponse>> {
-  return request('/ai/sentence', {
-    method: 'POST',
-    body: JSON.stringify({ known_chars: knownChars }),
-  })
-}
+// --- 汉字学习：迁移到 services/hanzi.ts（Level 化重构） ---
 
 // --- 英文启蒙 ---
 export function getEnglishThemes(): Promise<ApiResponse<EnglishThemesResponse>> {

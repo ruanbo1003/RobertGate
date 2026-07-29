@@ -5,9 +5,8 @@ import AiToolsSidebar from './AiToolsSidebar'
 
 const crumbMap: Record<string, string> = {
   '/ai-tools/translate': '翻译 / 英文优化',
-  '/ai-tools/hanzi/library': '汉字学习 › 字库管理',
-  '/ai-tools/hanzi/learn': '汉字学习 › 逐字学习',
-  '/ai-tools/hanzi/sentence': '汉字学习 › 句子学习',
+  '/ai-tools/hanzi': '汉字学习 › 级别列表',
+  '/ai-tools/admin/hanzi': '汉字学习 › 管理 · 级别',
   '/ai-tools/english/themes': '英文启蒙 › 主题列表',
   '/ai-tools/english/quiz': '英文启蒙 › 答题',
   '/ai-tools/text-to-image': '文生图',
@@ -15,7 +14,12 @@ const crumbMap: Record<string, string> = {
 
 export default function AiToolsLayout() {
   const location = useLocation()
-  const crumb = crumbMap[location.pathname] ?? ''
+  let crumb = crumbMap[location.pathname] ?? ''
+  if (!crumb && location.pathname.startsWith('/ai-tools/admin/hanzi/levels/')) {
+    crumb = '汉字学习 › 管理 · 字条'
+  } else if (!crumb && location.pathname.startsWith('/ai-tools/hanzi/levels/')) {
+    crumb = '汉字学习 › 字表'
+  }
 
   return (
     <div className="min-h-screen bg-page">

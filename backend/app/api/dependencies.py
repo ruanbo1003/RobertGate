@@ -3,9 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.exceptions import AuthException
-from app.repository.hanzi_repo import HanziRepo
-from app.repository.password_reset_repo import PasswordResetRepo
+from app.repository.hanzi_character_repo import HanziCharacterRepo
+from app.repository.hanzi_level_repo import HanziLevelRepo
+from app.repository.hanzi_progress_repo import HanziProgressRepo
 from app.repository.user_repo import UserRepo
+from app.service.admin_hanzi_service import AdminHanziService
 from app.service.ai_client import AIClient, get_ai_client
 from app.service.auth_service import AuthService
 from app.service.english_service import EnglishService
@@ -15,10 +17,7 @@ from app.service.translate_service import TranslateService
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
-    return AuthService(
-        user_repo=UserRepo(db),
-        reset_repo=PasswordResetRepo(db),
-    )
+    return AuthService(user_repo=UserRepo(db))
 
 
 async def get_current_user_id(
@@ -34,6 +33,16 @@ async def get_current_user_id(
     return user_id
 
 
+async def require_admin(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> str:
+    user = await UserRepo(db).find_by_id(user_id)
+    if not user or user.role != "admin":
+        raise AuthException(1002, "无权限")
+    return user_id
+
+
 def get_ai_client_dep() -> AIClient:
     return get_ai_client()
 
@@ -46,9 +55,21 @@ async def get_translate_service(
 
 async def get_hanzi_service(
     db: AsyncSession = Depends(get_db),
-    ai: AIClient = Depends(get_ai_client_dep),
 ) -> HanziService:
-    return HanziService(repo=HanziRepo(db), ai=ai)
+    return HanziService(
+        level_repo=HanziLevelRepo(db),
+        character_repo=HanziCharacterRepo(db),
+        progress_repo=HanziProgressRepo(db),
+    )
+
+
+async def get_admin_hanzi_service(
+    db: AsyncSession = Depends(get_db),
+) -> AdminHanziService:
+    return AdminHanziService(
+        level_repo=HanziLevelRepo(db),
+        character_repo=HanziCharacterRepo(db),
+    )
 
 
 def get_english_service() -> EnglishService:

@@ -9,7 +9,9 @@ from app.core.database import Base
 
 # Import all models so Alembic sees them
 from app.models.user import User  # noqa: F401
-from app.models.password_reset import PasswordReset  # noqa: F401
+from app.models.hanzi_level import HanziLevel  # noqa: F401
+from app.models.hanzi_character import HanziCharacter  # noqa: F401
+from app.models.hanzi_progress import HanziUserProgress  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

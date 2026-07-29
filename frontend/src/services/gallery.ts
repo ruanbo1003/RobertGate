@@ -1,7 +1,7 @@
 import type { ApiResponse } from '../types/auth'
 import type { GalleryResponse } from '../types/gallery'
 
-const API_BASE = '/api/v1/gallery'
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1/gallery`
 
 export async function getPhotos(): Promise<ApiResponse<GalleryResponse>> {
   try {

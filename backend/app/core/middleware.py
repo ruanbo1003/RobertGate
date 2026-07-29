@@ -32,7 +32,7 @@ class ApiLoggingMiddleware(BaseHTTPMiddleware):
         duration = round((time.time() - start) * 1000, 2)
 
         path = request.url.path
-        if path not in ("/api/v1/health", "/docs", "/openapi.json"):
+        if path not in ("/api/health", "/docs", "/openapi.json"):
             access_logger.info(
                 "%s %s status=%s duration=%sms",
                 request.method,

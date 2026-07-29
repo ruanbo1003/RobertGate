@@ -3,12 +3,10 @@ import type {
   AuthResponse,
   RegisterRequest,
   LoginRequest,
-  ForgotPasswordRequest,
-  ResetPasswordRequest,
   AvailabilityResponse,
 } from '../types/auth'
 
-const API_BASE = '/api/v1/auth'
+const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1/auth`
 
 async function request<T>(
   path: string,
@@ -47,24 +45,6 @@ export function login(
   data: LoginRequest
 ): Promise<ApiResponse<AuthResponse>> {
   return request('/login', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
-}
-
-export function forgotPassword(
-  data: ForgotPasswordRequest
-): Promise<ApiResponse> {
-  return request('/forgot-password', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  })
-}
-
-export function resetPassword(
-  data: ResetPasswordRequest
-): Promise<ApiResponse> {
-  return request('/reset-password', {
     method: 'POST',
     body: JSON.stringify(data),
   })
