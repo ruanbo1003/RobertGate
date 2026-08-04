@@ -95,6 +95,12 @@ class AuthService:
 
         return self._auth_result(user)
 
+    async def get_me(self, user_id: str) -> dict:
+        user = await self.user_repo.find_by_id(user_id)
+        if not user:
+            raise AuthException(1001, "未登录")
+        return self._user_dict(user)
+
     async def check_username(self, username: str) -> bool:
         return await self.user_repo.find_by_username(username) is None
 

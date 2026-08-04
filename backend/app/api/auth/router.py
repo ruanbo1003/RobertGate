@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_auth_service
+from app.api.dependencies import get_auth_service, get_current_user_id
 from app.core.response import success
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.service.auth_service import AuthService
@@ -19,6 +19,15 @@ async def register(
 @router.post("/login")
 async def login(body: LoginRequest, service: AuthService = Depends(get_auth_service)):
     result = await service.login(body.email, body.password)
+    return success(result)
+
+
+@router.get("/me")
+async def me(
+    user_id: str = Depends(get_current_user_id),
+    service: AuthService = Depends(get_auth_service),
+):
+    result = await service.get_me(user_id)
     return success(result)
 
 

@@ -1,9 +1,11 @@
-import { Link, Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, Cpu, Bookmark, User } from 'lucide-react'
 import Navbar from '../components/layout/Navbar'
 import Footer from '../components/layout/Footer'
 import { useAuth } from '../store/AuthContext'
+
+// Hide the hero CTAs (Sign In / Create Account) for already-authenticated users
 
 const features = [
   {
@@ -41,10 +43,6 @@ const fadeUp = {
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth()
-
-  if (isAuthenticated) {
-    return <Navigate to="/not-implemented" replace />
-  }
 
   return (
     <div className="min-h-screen flex flex-col bg-page relative">
@@ -93,19 +91,31 @@ export default function HomePage() {
             variants={fadeUp}
             className="flex flex-col sm:flex-row items-center justify-center gap-3"
           >
-            <Link
-              to="/login"
-              className="flex items-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-all duration-150 hover:shadow-[var(--rg-shadow-button-hover)]"
-            >
-              Sign In
-              <ArrowRight size={16} />
-            </Link>
-            <Link
-              to="/register"
-              className="flex items-center gap-2 h-11 px-6 border border-border hover:border-primary text-text-secondary hover:text-primary font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-all duration-150 bg-card"
-            >
-              Create Account
-            </Link>
+            {isAuthenticated ? (
+              <Link
+                to="/ai-tools"
+                className="flex items-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-all duration-150 hover:shadow-[var(--rg-shadow-button-hover)]"
+              >
+                Go to AI Tools
+                <ArrowRight size={16} />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="flex items-center gap-2 h-11 px-6 bg-primary hover:bg-primary-hover text-white font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-all duration-150 hover:shadow-[var(--rg-shadow-button-hover)]"
+                >
+                  Sign In
+                  <ArrowRight size={16} />
+                </Link>
+                <Link
+                  to="/register"
+                  className="flex items-center gap-2 h-11 px-6 border border-border hover:border-primary text-text-secondary hover:text-primary font-sans text-sm font-semibold rounded-[var(--radius-sm)] transition-all duration-150 bg-card"
+                >
+                  Create Account
+                </Link>
+              </>
+            )}
           </motion.div>
         </motion.section>
 

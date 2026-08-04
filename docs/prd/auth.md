@@ -48,7 +48,7 @@
 
 | 页面 | 路由 | 说明 |
 |------|------|------|
-| 登录页 | `/login` | 邮箱密码登录，含注册入口 |
+| 登录页 | `/login` | 邮箱密码登录，含注册入口；支持 `state.from` 回跳 |
 | 注册页 | `/register` | 邮箱注册，含登录入口 |
 
 ---
@@ -59,8 +59,59 @@
 |------|------|------|
 | POST | `/api/v1/auth/register` | 用户注册 |
 | POST | `/api/v1/auth/login` | 用户登录 |
+| GET  | `/api/v1/auth/me` | 获取当前登录用户信息（需 Bearer Token） |
 | GET  | `/api/v1/auth/check-username/:username` | 检查用户名是否可用 |
 | GET  | `/api/v1/auth/check-email/:email` | 检查邮箱是否可用 |
+
+### GET /auth/me
+- Header：`Authorization: Bearer <token>`
+- 成功：`{ code: 0, data: { id, username, email, role, created_at } }`
+- token 缺失或无效：`{ code: 1001, message: "未登录" }`
+
+---
+
+## 访问控制
+
+| 路由前缀 | 是否需要登录 | 未登录处理 |
+|---------|-------------|-----------|
+| `/ai-tools/*` | 是 | 跳转 `/login`，携带 `state.from` 记录原路由；登录成功后回跳原页面 |
+| 其余页面（`/`, `/login`, `/register`, `/about`, `/gallery`, `/bookmarks`, `/404`, `/403` 等） | 否 | — |
+
+**前端策略：**
+- 用 `<ProtectedRoute>` 包裹 `/ai-tools` 整棵子路由树
+- 未登录访问 → `<Navigate to="/login" state={{ from: location }} replace />`
+- 登录页在 submit 成功后：`navigate(state.from?.pathname ?? '/', { replace: true })`
+
+**Token 生命周期：**
+- 应用启动时若 localStorage 存在 token，自动调用 `GET /auth/me`
+  - 成功：刷新本地 user 缓存（保证 role 等字段与后端同步）
+  - 失败（1001）：清空 token / user，视作未登录
+
+---
+
+## 用户菜单
+
+**位置**：Navbar 右上（原 Sign In 按钮位置）。
+
+**未登录状态**：显示 `Sign In` 按钮。
+
+**已登录状态**：显示头像圆钮（`username` 首字母，`primary` 底 + 白字），点击展开下拉：
+
+```
+┌───────────────────────────┐
+│  <username>               │  ← 粗体
+│  <email>                  │  ← 小字灰
+│  [role 徽章]              │  ← admin: accent 橙 / user: text-muted 灰边
+├───────────────────────────┤
+│  Logout                   │  ← error 色文字
+└───────────────────────────┘
+```
+
+**交互**：
+- 外部点击 / ESC 关闭
+- Logout 点击：清空 token/user，跳转 `/login`
+
+**移动端**：汉堡菜单里，已登录时用同样的信息块 + Logout 按钮替换底部 Sign In 按钮。
 
 ---
 

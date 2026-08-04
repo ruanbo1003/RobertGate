@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import type { Location } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import AuthLayout from '../components/layout/AuthLayout'
 import FormInput from '../components/ui/FormInput'
@@ -10,11 +11,14 @@ import { useAuth } from '../store/AuthContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const auth = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const from = (location.state as { from?: Location } | null)?.from?.pathname ?? '/'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,7 +30,7 @@ export default function LoginPage() {
 
     if (res.code === 0) {
       auth.login(res.data.access_token, res.data.user)
-      navigate('/')
+      navigate(from, { replace: true })
     } else {
       setError(res.message)
     }

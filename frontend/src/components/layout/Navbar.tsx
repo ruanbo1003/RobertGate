@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Menu, X, Cpu, Bookmark, User, Image } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../store/AuthContext'
+import UserMenu from './UserMenu'
 
 const navLinks = [
   { to: '/ai-tools', label: 'AI Tools', icon: Cpu },
@@ -12,8 +13,15 @@ const navLinks = [
 ]
 
 export default function Navbar() {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, user, logout } = useAuth()
+  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+
+  const handleMobileLogout = () => {
+    setMenuOpen(false)
+    logout()
+    navigate('/login')
+  }
 
   return (
     <nav className="sticky top-0 z-[var(--rg-z-sticky)] w-full bg-card/80 backdrop-blur-lg border-b border-border">
@@ -40,12 +48,7 @@ export default function Navbar() {
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center">
           {isAuthenticated ? (
-            <Link
-              to="/dashboard"
-              className="flex items-center gap-1.5 h-9 px-4 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-[var(--radius-sm)] transition-colors"
-            >
-              Dashboard
-            </Link>
+            <UserMenu />
           ) : (
             <Link
               to="/login"
@@ -89,13 +92,38 @@ export default function Navbar() {
                 </Link>
               ))}
               <div className="border-t border-border my-1" />
-              <Link
-                to={isAuthenticated ? '/dashboard' : '/login'}
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center justify-center h-10 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-[var(--radius-sm)] transition-colors"
-              >
-                {isAuthenticated ? 'Dashboard' : 'Sign In'}
-              </Link>
+              {isAuthenticated && user ? (
+                <>
+                  <div className="flex items-center gap-3 px-3 py-2">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary text-white text-base font-bold shrink-0">
+                      {(user.username || user.email).charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-text-primary truncate">
+                        <span className="font-bold">{user.username}</span>
+                        <span className="text-text-muted font-normal"> · {user.role}</span>
+                      </div>
+                      <div className="text-xs text-text-muted truncate">{user.email}</div>
+                    </div>
+                  </div>
+                  <div className="border-t border-border my-1" />
+                  <button
+                    type="button"
+                    onClick={handleMobileLogout}
+                    className="w-full text-left px-3 py-2.5 text-sm text-text-primary hover:bg-page rounded-[var(--radius-sm)] transition-colors cursor-pointer"
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/login"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center justify-center h-10 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-[var(--radius-sm)] transition-colors"
+                >
+                  Sign In
+                </Link>
+              )}
             </div>
           </motion.div>
         )}

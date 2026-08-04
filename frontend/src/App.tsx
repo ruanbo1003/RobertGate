@@ -10,6 +10,7 @@ import AboutPage from './pages/AboutPage'
 import AboutZhPage from './pages/AboutZhPage'
 import GalleryPage from './pages/GalleryPage'
 import AiToolsLayout from './components/layout/AiToolsLayout'
+import ProtectedRoute from './components/layout/ProtectedRoute'
 import TranslatePage from './pages/ai-tools/TranslatePage'
 import HanziLevelListPage from './pages/ai-tools/HanziLevelListPage'
 import HanziCharacterGridPage from './pages/ai-tools/HanziCharacterGridPage'
@@ -27,8 +28,14 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route path="/dashboard" element={<NotImplementedPage />} />
-          <Route path="/ai-tools" element={<AiToolsLayout />}>
+          <Route
+            path="/ai-tools"
+            element={
+              <ProtectedRoute>
+                <AiToolsLayout />
+              </ProtectedRoute>
+            }
+          >
             <Route index element={<Navigate to="/ai-tools/translate" replace />} />
             <Route path="translate" element={<TranslatePage />} />
             <Route path="hanzi" element={<HanziLevelListPage />} />

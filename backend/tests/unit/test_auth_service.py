@@ -100,3 +100,26 @@ async def test_check_username(auth_service, user_repo):
 
     user_repo.find_by_username.return_value = _make_user()
     assert await auth_service.check_username("taken") is False
+
+
+@pytest.mark.asyncio
+async def test_get_me_success(auth_service, user_repo):
+    user = _make_user()
+    user_repo.find_by_id.return_value = user
+
+    result = await auth_service.get_me(user.id)
+
+    assert result["id"] == user.id
+    assert result["username"] == user.username
+    assert result["email"] == user.email
+    assert result["role"] == "user"
+    assert "created_at" in result
+
+
+@pytest.mark.asyncio
+async def test_get_me_not_found(auth_service, user_repo):
+    user_repo.find_by_id.return_value = None
+
+    with pytest.raises(AuthException) as exc_info:
+        await auth_service.get_me("nonexistent-id")
+    assert exc_info.value.code == 1001

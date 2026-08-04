@@ -4,6 +4,7 @@ import type {
   RegisterRequest,
   LoginRequest,
   AvailabilityResponse,
+  User,
 } from '../types/auth'
 
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL ?? ''}/api/v1/auth`
@@ -60,4 +61,10 @@ export function checkEmail(
   email: string
 ): Promise<ApiResponse<AvailabilityResponse>> {
   return request(`/check-email/${encodeURIComponent(email)}`)
+}
+
+export function getMe(token: string): Promise<ApiResponse<User>> {
+  return request('/me', {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
