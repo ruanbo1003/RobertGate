@@ -74,6 +74,29 @@ CHARACTER_INFO_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+PRACTICE_TEXT_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "你是一名儿童中文启蒙老师，请为 4-8 岁小朋友生成一段练习短文。\n"
+            "已学字（他们能认得的字）：{learned_chars}\n"
+            "要求：\n"
+            "1. 生成一段 20-40 个汉字的简单短文，尽量使用已学字。\n"
+            "2. 允许出现少量（约 10-20%）的常见简单新字，让内容自然。\n"
+            "3. 主题贴近生活：家庭、动物、天气、食物、玩耍等。\n"
+            "4. 只输出 JSON，字段：text（string，短文本身，可以含标点），"
+            "annotations（数组，text 中每个汉字给出 {{char, pinyin}}，非汉字跳过），"
+            "new_chars（数组，本次用到的、不在已学字里的汉字，去重）。\n"
+            "5. pinyin 必须带声调，不加空格。\n"
+            "6. 不要 markdown、不要解释、不要额外字段。",
+        ),
+        (
+            "user",
+            "已学字数量：{count}。请生成一段简单练习短文。",
+        ),
+    ]
+)
+
 
 class OpenRouterAIClient:
     """真实 AI 客户端：翻译 3 个动作走 OpenRouter，其余方法委托给 Mock。"""
@@ -134,7 +157,28 @@ class OpenRouterAIClient:
     # --- 未实现的能力，委托给 Mock ---
 
     async def practice_text(self, learned_chars: list[str]) -> dict:
-        return await self._fallback.practice_text(learned_chars)  # 真实实现在 Task 2
+        """返回 {text, annotations: [{char, pinyin}], new_chars}."""
+        chain = (
+            PRACTICE_TEXT_PROMPT
+            | self._llm.bind(response_format={"type": "json_object"})
+            | JsonOutputParser()
+        )
+        out = await chain.ainvoke(
+            {
+                "learned_chars": "、".join(learned_chars) if learned_chars else "（无）",
+                "count": len(learned_chars),
+            }
+        )
+        text = str(out.get("text") or "").strip()
+        if not text:
+            raise ValueError("AI 返回缺少 text")
+        annotations = out.get("annotations") or []
+        new_chars = out.get("new_chars") or []
+        return {
+            "text": text,
+            "annotations": annotations if isinstance(annotations, list) else [],
+            "new_chars": new_chars if isinstance(new_chars, list) else [],
+        }
 
     async def generate_image(self, prompt: str) -> str:
         return await self._fallback.generate_image(prompt)
