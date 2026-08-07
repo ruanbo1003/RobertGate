@@ -22,8 +22,8 @@ class AIClient(Protocol):
         """返回 {pinyin, words, sentence, sentence_pinyin}."""
         ...
 
-    async def compose_sentence(self, known_chars: list[str]) -> dict:
-        """返回 {sentence, pinyin, translation}."""
+    async def practice_text(self, learned_chars: list[str]) -> dict:
+        """返回 {text, annotations: [{char, pinyin}], new_chars: [char]}."""
         ...
 
     async def generate_image(self, prompt: str) -> str:
@@ -57,14 +57,15 @@ class MockAIClient:
             "sentence_pinyin": "zhè shì yī gè shì lì jù zi",
         }
 
-    async def compose_sentence(self, known_chars: list[str]) -> dict:
-        # 优先用给定字组个短句
-        base = "".join(known_chars[:6]) if len(known_chars) >= 6 else "".join(known_chars)
-        return {
-            "sentence": base + "。",
-            "pinyin": " ".join(["mó"] * len(base)),
-            "translation": f"[Mock EN] Made from: {base}",
-        }
+    async def practice_text(self, learned_chars: list[str]) -> dict:
+        base = "".join(learned_chars[:8]) if learned_chars else "字"
+        text = f"今天{base}都很好。"
+        annotations = [
+            {"char": ch, "pinyin": "mó"}
+            for ch in text
+            if "\u4e00" <= ch <= "\u9fff"
+        ]
+        return {"text": text, "annotations": annotations, "new_chars": []}
 
     async def generate_image(self, prompt: str) -> str:
         # Mock：返回占位图片 URL。真实实现应下载并保存到 /root/images/t2i/ 下。
@@ -76,9 +77,28 @@ _default_client: AIClient | None = None
 
 
 def get_ai_client() -> AIClient:
-    """FastAPI 依赖：返回全局 AI 客户端。"""
+    """FastAPI 依赖：返回全局 AI 客户端。
+
+    配置了 OPENROUTER_API_KEY 时使用 OpenRouterAIClient（LangChain 接入真实模型），
+    否则回退到 MockAIClient，保证本地无 key 环境仍可运行。
+    """
     global _default_client
-    if _default_client is None:
+    if _default_client is not None:
+        return _default_client
+
+    from app.core.setting import get_settings
+
+    settings = get_settings()
+    if settings.OPENROUTER_API_KEY:
+        # 延迟导入，避免未安装 langchain 时也能启动 mock 模式
+        from app.service.openrouter_client import OpenRouterAIClient
+
+        _default_client = OpenRouterAIClient(
+            api_key=settings.OPENROUTER_API_KEY,
+            model=settings.OPENROUTER_MODEL,
+            base_url=settings.OPENROUTER_BASE_URL,
+        )
+    else:
         _default_client = MockAIClient()
     return _default_client
 

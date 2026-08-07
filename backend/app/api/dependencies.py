@@ -55,20 +55,24 @@ async def get_translate_service(
 
 async def get_hanzi_service(
     db: AsyncSession = Depends(get_db),
+    ai: AIClient = Depends(get_ai_client_dep),
 ) -> HanziService:
     return HanziService(
         level_repo=HanziLevelRepo(db),
         character_repo=HanziCharacterRepo(db),
         progress_repo=HanziProgressRepo(db),
+        ai=ai,
     )
 
 
 async def get_admin_hanzi_service(
     db: AsyncSession = Depends(get_db),
+    ai: AIClient = Depends(get_ai_client_dep),
 ) -> AdminHanziService:
     return AdminHanziService(
         level_repo=HanziLevelRepo(db),
         character_repo=HanziCharacterRepo(db),
+        ai=ai,
     )
 
 

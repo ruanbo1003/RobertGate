@@ -26,11 +26,17 @@ def progress_repo():
 
 
 @pytest.fixture
-def service(level_repo, character_repo, progress_repo):
+def ai():
+    return AsyncMock()
+
+
+@pytest.fixture
+def service(level_repo, character_repo, progress_repo, ai):
     return HanziService(
         level_repo=level_repo,
         character_repo=character_repo,
         progress_repo=progress_repo,
+        ai=ai,
     )
 
 
@@ -53,7 +59,7 @@ def _character(id_: str, level_id: str, char: str, order: int = 0) -> HanziChara
         level_id=level_id,
         char=char,
         pinyin="p",
-        meaning=None,
+        example_words=[],
         order_index=order,
         created_at=now,
         updated_at=now,
