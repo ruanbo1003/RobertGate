@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "glm-4.6"
 
     model_config = SettingsConfigDict(
-        env_file=f".env.{env}",
+        env_file=(".env", f".env.{env}"),
         env_file_encoding="utf-8",
         case_sensitive=True,
     )
