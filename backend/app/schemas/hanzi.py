@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")
 
 MAX_NAME_LEN = 64
 MAX_DESC_LEN = 500
 MAX_PINYIN_LEN = 32
-MAX_MEANING_LEN = 500
-BATCH_MAX = 200
+MAX_EXAMPLE_WORDS = 20
+MAX_EXAMPLE_WORD_LEN = 16
+MAX_AI_ADD_TEXT_LEN = 2000
 
 
 def _strip_or_none(v: str | None) -> str | None:
@@ -18,6 +19,24 @@ def _strip_or_none(v: str | None) -> str | None:
         return None
     v = v.strip()
     return v if v else None
+
+
+def _validate_example_words(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return None
+    cleaned: list[str] = []
+    for w in v:
+        if not isinstance(w, str):
+            raise ValueError("example_words 每项必须是字符串")
+        w = w.strip()
+        if not w:
+            continue
+        if len(w) > MAX_EXAMPLE_WORD_LEN:
+            raise ValueError(f"example_words 单项超过 {MAX_EXAMPLE_WORD_LEN} 字符")
+        cleaned.append(w)
+    if len(cleaned) > MAX_EXAMPLE_WORDS:
+        raise ValueError(f"example_words 上限 {MAX_EXAMPLE_WORDS} 条")
+    return cleaned
 
 
 # ---------- User side ----------
@@ -104,7 +123,7 @@ class LevelUpdateRequest(BaseModel):
 class CharacterCreateRequest(BaseModel):
     char: str
     pinyin: str
-    meaning: str | None = None
+    example_words: list[str] | None = None
     order_index: int | None = None
 
     @field_validator("char")
@@ -127,14 +146,10 @@ class CharacterCreateRequest(BaseModel):
             raise ValueError(f"pinyin 超过 {MAX_PINYIN_LEN} 字符")
         return v
 
-    @field_validator("meaning")
+    @field_validator("example_words")
     @classmethod
-    def _v_meaning(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if len(v) > MAX_MEANING_LEN:
-            raise ValueError(f"meaning 超过 {MAX_MEANING_LEN} 字符")
-        return v
+    def _v_words(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_example_words(v)
 
     @field_validator("order_index")
     @classmethod
@@ -149,7 +164,7 @@ class CharacterCreateRequest(BaseModel):
 class CharacterUpdateRequest(BaseModel):
     char: str | None = None
     pinyin: str | None = None
-    meaning: str | None = None
+    example_words: list[str] | None = None
     order_index: int | None = None
 
     @field_validator("char")
@@ -176,14 +191,10 @@ class CharacterUpdateRequest(BaseModel):
             raise ValueError(f"pinyin 超过 {MAX_PINYIN_LEN} 字符")
         return v
 
-    @field_validator("meaning")
+    @field_validator("example_words")
     @classmethod
-    def _v_meaning(cls, v: str | None) -> str | None:
-        if v is None:
-            return None
-        if len(v) > MAX_MEANING_LEN:
-            raise ValueError(f"meaning 超过 {MAX_MEANING_LEN} 字符")
-        return v
+    def _v_words(cls, v: list[str] | None) -> list[str] | None:
+        return _validate_example_words(v)
 
     @field_validator("order_index")
     @classmethod
@@ -195,20 +206,26 @@ class CharacterUpdateRequest(BaseModel):
         return v
 
 
-class BatchImportItem(BaseModel):
-    char: str
-    pinyin: str
-    meaning: str | None = None
+class AiAddRequest(BaseModel):
+    text: str
 
-
-class BatchImportRequest(BaseModel):
-    items: list[BatchImportItem] = Field(default_factory=list)
-
-    @field_validator("items")
+    @field_validator("text")
     @classmethod
-    def _v_items(cls, v: list[BatchImportItem]) -> list[BatchImportItem]:
+    def _v_text(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("text 不能为空")
+        if len(v) > MAX_AI_ADD_TEXT_LEN:
+            raise ValueError(f"text 超过 {MAX_AI_ADD_TEXT_LEN} 字符")
+        return v
+
+
+class PracticeTextRequest(BaseModel):
+    level_id: str
+
+    @field_validator("level_id")
+    @classmethod
+    def _v_level_id(cls, v: str) -> str:
+        v = v.strip()
         if not v:
-            raise ValueError("items 不能为空")
-        if len(v) > BATCH_MAX:
-            raise ValueError(f"items 单次上限 {BATCH_MAX} 条")
+            raise ValueError("level_id 不能为空")
         return v

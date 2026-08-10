@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Plus, Upload, Pencil, Trash2, ChevronLeft } from 'lucide-react'
+import { Sparkles, Pencil, Trash2, ChevronLeft } from 'lucide-react'
 import CharacterEditModal from '../../components/admin/CharacterEditModal'
-import CharacterBatchImportModal from '../../components/admin/CharacterBatchImportModal'
+import CharacterAiAddModal from '../../components/admin/CharacterAiAddModal'
 import {
-  adminBatchImport,
+  adminAiAddCharacters,
   adminCreateCharacter,
   adminDeleteCharacter,
   adminListCharacters,
   adminUpdateCharacter,
 } from '../../services/hanzi'
 import type {
-  BatchImportItem,
+  AiAddResponse,
   HanziCharacter,
   HanziLevelSummary,
 } from '../../types/hanzi'
@@ -26,7 +26,7 @@ export default function AdminCharacterListPage() {
 
   const [editing, setEditing] = useState<HanziCharacter | null>(null)
   const [editOpen, setEditOpen] = useState(false)
-  const [batchOpen, setBatchOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const refresh = () => {
@@ -50,10 +50,6 @@ export default function AdminCharacterListPage() {
 
   const nextOrder = chars.length > 0 ? Math.max(...chars.map((c) => c.order_index)) + 1 : 0
 
-  const openCreate = () => {
-    setEditing(null)
-    setEditOpen(true)
-  }
   const openEdit = (c: HanziCharacter) => {
     setEditing(c)
     setEditOpen(true)
@@ -62,7 +58,7 @@ export default function AdminCharacterListPage() {
   const handleSubmit = async (payload: {
     char: string
     pinyin: string
-    meaning: string
+    example_words: string[]
     order_index: number
   }) => {
     setSubmitting(true)
@@ -70,13 +66,13 @@ export default function AdminCharacterListPage() {
       ? await adminUpdateCharacter(editing.id, {
           char: payload.char,
           pinyin: payload.pinyin,
-          meaning: payload.meaning,
+          example_words: payload.example_words,
           order_index: payload.order_index,
         })
       : await adminCreateCharacter(levelId, {
           char: payload.char,
           pinyin: payload.pinyin,
-          meaning: payload.meaning,
+          example_words: payload.example_words,
           order_index: payload.order_index,
         })
     setSubmitting(false)
@@ -98,11 +94,11 @@ export default function AdminCharacterListPage() {
     refresh()
   }
 
-  const handleBatch = async (items: BatchImportItem[]) => {
-    const res = await adminBatchImport(levelId, items)
+  const handleAiAdd = async (text: string): Promise<AiAddResponse | null> => {
+    const res = await adminAiAddCharacters(levelId, text)
     if (res.code !== 0 || !res.data) {
       alert(res.message)
-      return { ok: 0, failed: items.map((i) => ({ char: i.char, reason: res.message })) }
+      return null
     }
     refresh()
     return res.data
@@ -158,22 +154,13 @@ export default function AdminCharacterListPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <motion.button
-            onClick={() => setBatchOpen(true)}
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            className="flex items-center gap-1.5 h-11 px-4 bg-card border border-border text-text-primary text-sm font-semibold rounded-[var(--radius-sm)] hover:border-primary hover:text-primary transition-colors cursor-pointer"
-          >
-            <Upload size={16} />
-            批量导入
-          </motion.button>
-          <motion.button
-            onClick={openCreate}
+            onClick={() => setAiOpen(true)}
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}
             className="flex items-center gap-1.5 h-11 px-4 bg-primary text-text-on-primary text-sm font-semibold rounded-[var(--radius-sm)] hover:bg-primary-hover transition-colors cursor-pointer"
           >
-            <Plus size={16} />
-            单条添加
+            <Sparkles size={16} />
+            汉字添加
           </motion.button>
         </div>
       </div>
@@ -188,24 +175,16 @@ export default function AdminCharacterListPage() {
         <div className="bg-card border border-border rounded-[var(--radius-lg)] p-12 text-center">
           <div className="text-4xl mb-3">📝</div>
           <p className="text-sm text-text-muted mb-4">该级别还没有字条</p>
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={openCreate}
-              className="text-sm text-primary hover:text-primary-hover cursor-pointer font-medium"
-            >
-              添加第一个
-            </button>
-            <span className="text-text-muted">·</span>
-            <button
-              onClick={() => setBatchOpen(true)}
-              className="text-sm text-primary hover:text-primary-hover cursor-pointer font-medium"
-            >
-              批量导入
-            </button>
-          </div>
+          <button
+            onClick={() => setAiOpen(true)}
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary-hover cursor-pointer font-medium"
+          >
+            <Sparkles size={14} />
+            汉字添加
+          </button>
         </div>
       ) : (
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {[...chars]
             .sort((a, b) => a.order_index - b.order_index)
             .map((c) => (
@@ -217,12 +196,12 @@ export default function AdminCharacterListPage() {
                   {c.char}
                 </div>
                 <div className="text-sm text-text-muted">{c.pinyin}</div>
-                {c.meaning && (
+                {c.example_words && c.example_words.length > 0 && (
                   <div
-                    className="text-xs text-text-muted text-center truncate w-full"
-                    title={c.meaning}
+                    className="text-xs text-text-muted text-center leading-snug line-clamp-2 w-full mt-0.5"
+                    title={c.example_words.join('、')}
                   >
-                    {c.meaning}
+                    {c.example_words.join('、')}
                   </div>
                 )}
                 <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -254,10 +233,10 @@ export default function AdminCharacterListPage() {
         nextOrderIndex={nextOrder}
         submitting={submitting}
       />
-      <CharacterBatchImportModal
-        open={batchOpen}
-        onClose={() => setBatchOpen(false)}
-        onSubmit={handleBatch}
+      <CharacterAiAddModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onSubmit={handleAiAdd}
       />
     </div>
   )

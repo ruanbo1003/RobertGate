@@ -31,16 +31,16 @@ SAMPLE_LEVEL = {
 }
 
 SAMPLE_CHARACTERS = [
-    ("人", "rén", "人类；每个个体"),
-    ("口", "kǒu", "嘴巴；出入口"),
-    ("大", "dà", "体积/程度大"),
-    ("小", "xiǎo", "体积/程度小"),
-    ("上", "shàng", "上方；上升"),
-    ("下", "xià", "下方；下降"),
-    ("山", "shān", "山峰"),
-    ("水", "shuǐ", "水"),
-    ("日", "rì", "太阳；日子"),
-    ("月", "yuè", "月亮；月份"),
+    ("人", "rén", ["人类", "人口", "大人", "人们"]),
+    ("口", "kǒu", ["口水", "开口", "门口", "人口"]),
+    ("大", "dà", ["大小", "大人", "大门", "大家"]),
+    ("小", "xiǎo", ["小心", "小孩", "小时", "大小"]),
+    ("上", "shàng", ["上面", "上班", "早上", "向上"]),
+    ("下", "xià", ["下面", "下雨", "下班", "下午"]),
+    ("山", "shān", ["山水", "山上", "高山", "山口"]),
+    ("水", "shuǐ", ["水果", "喝水", "山水", "水口"]),
+    ("日", "rì", ["日子", "生日", "日出", "今日"]),
+    ("月", "yuè", ["月亮", "月光", "每月", "岁月"]),
 ]
 
 
@@ -103,7 +103,7 @@ async def ensure_level_and_characters() -> None:
         existing_set = set(existing_chars.all())
 
         added = 0
-        for idx, (ch, py, meaning) in enumerate(SAMPLE_CHARACTERS):
+        for idx, (ch, py, words) in enumerate(SAMPLE_CHARACTERS):
             if ch in existing_set:
                 continue
             session.add(
@@ -112,7 +112,7 @@ async def ensure_level_and_characters() -> None:
                     level_id=level.id,
                     char=ch,
                     pinyin=py,
-                    meaning=meaning,
+                    example_words=words,
                     order_index=idx,
                     created_at=now,
                     updated_at=now,

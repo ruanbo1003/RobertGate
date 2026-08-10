@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # App
     DEBUG: bool = False
 
+    # LLM (OpenAI-compatible: OpenRouter / 智谱 / DeepSeek / OpenAI 等)
+    # 默认走智谱 BigModel，可通过 .env.local 覆盖。
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4/"
+    LLM_MODEL: str = "glm-4.6"
+
     model_config = SettingsConfigDict(
         env_file=f".env.{env}",
         env_file_encoding="utf-8",

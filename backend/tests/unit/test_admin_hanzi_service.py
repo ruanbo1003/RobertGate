@@ -6,7 +6,7 @@ import pytest
 from app.core.exceptions import ParamException
 from app.models.hanzi_character import HanziCharacter
 from app.models.hanzi_level import HanziLevel
-from app.service.admin_hanzi_service import AdminHanziService
+from app.service.admin_hanzi_service import AdminHanziService, _extract_chars
 
 
 @pytest.fixture
@@ -20,8 +20,15 @@ def character_repo():
 
 
 @pytest.fixture
-def service(level_repo, character_repo):
-    return AdminHanziService(level_repo=level_repo, character_repo=character_repo)
+def ai():
+    return AsyncMock()
+
+
+@pytest.fixture
+def service(level_repo, character_repo, ai):
+    return AdminHanziService(
+        level_repo=level_repo, character_repo=character_repo, ai=ai
+    )
 
 
 def _level(id_: str = "l1", name: str = "L1") -> HanziLevel:
@@ -36,8 +43,19 @@ def _character(id_: str, char: str, level_id: str = "l1") -> HanziCharacter:
     now = datetime.now(timezone.utc)
     return HanziCharacter(
         id=id_, level_id=level_id, char=char, pinyin="p",
-        meaning=None, order_index=0, created_at=now, updated_at=now,
+        example_words=[], order_index=0, created_at=now, updated_at=now,
     )
+
+
+# ---------- Extract ----------
+
+
+def test_extract_chars_dedup_ordered():
+    assert _extract_chars("你好世界，Hello 好！") == ["你", "好", "世", "界"]
+
+
+def test_extract_chars_empty():
+    assert _extract_chars("no chinese here 123") == []
 
 
 # ---------- Levels ----------
@@ -128,10 +146,11 @@ async def test_create_character_success(service, level_repo, character_repo):
     character_repo.find_by_char.return_value = None
     character_repo.max_order_index.return_value = 4
 
-    result = await service.create_character("l1", "人", "rén", "人类", None)
+    result = await service.create_character("l1", "人", "rén", ["人口"], None)
 
     assert result["char"] == "人"
     assert result["order_index"] == 5
+    assert result["example_words"] == ["人口"]
     character_repo.save.assert_awaited_once()
 
 
@@ -154,52 +173,60 @@ async def test_create_character_global_conflict(
     assert exc.value.code == 2011
 
 
+# ---------- AI Add ----------
+
+
 @pytest.mark.asyncio
-async def test_batch_import_mixed_results(service, level_repo, character_repo):
+async def test_ai_add_no_hanzi(service, level_repo):
     level_repo.find_by_id.return_value = _level()
-    character_repo.existing_chars.return_value = {"口"}
+    result = await service.ai_add("l1", "hello 123")
+    assert result == {"ok": 0, "added": [], "skipped": [], "failed": []}
+
+
+@pytest.mark.asyncio
+async def test_ai_add_mixed(service, level_repo, character_repo, ai):
+    level_repo.find_by_id.return_value = _level()
+    character_repo.existing_chars.return_value = {"好"}
     character_repo.max_order_index.return_value = -1
 
-    result = await service.batch_import(
-        "l1",
-        items=[
-            {"char": "人", "pinyin": "rén", "meaning": None},
-            {"char": "口", "pinyin": "kǒu", "meaning": None},  # conflict
-            {"char": "A", "pinyin": "a", "meaning": None},  # invalid
-            {"char": "人", "pinyin": "rén", "meaning": None},  # dup in batch
-            {"char": "山", "pinyin": "", "meaning": None},  # empty pinyin
-        ],
-    )
+    async def fake_info(char: str) -> dict:
+        if char == "世":
+            raise RuntimeError("upstream down")
+        return {
+            "pinyin": {"你": "nǐ", "界": "jiè"}[char],
+            "words": [char + "a", char + "b", char + "c", char + "d"],
+            "sentence": "",
+            "sentence_pinyin": "",
+        }
 
-    assert result["ok"] == 1
-    reasons = [f["reason"] for f in result["failed"]]
-    assert any("单个汉字" in r for r in reasons)
-    assert any("批次内重复" in r for r in reasons)
-    assert any("已存在" in r for r in reasons)
-    assert any("pinyin" in r for r in reasons)
+    ai.character_info.side_effect = fake_info
+
+    result = await service.ai_add("l1", "你好世界")
+
+    assert result["ok"] == 2
+    added_chars = {a["char"] for a in result["added"]}
+    assert added_chars == {"你", "界"}
+    assert result["skipped"] == [{"char": "好", "reason": "已存在"}]
+    assert len(result["failed"]) == 1
+    assert result["failed"][0]["char"] == "世"
+    # order index continues from max+1
+    orders = sorted(a["order_index"] for a in result["added"])
+    assert orders == [0, 1]
+    character_repo.save_many.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_batch_import_all_valid_allocates_order(
-    service, level_repo, character_repo
-):
+async def test_ai_add_bad_ai_response(service, level_repo, character_repo, ai):
     level_repo.find_by_id.return_value = _level()
     character_repo.existing_chars.return_value = set()
-    character_repo.max_order_index.return_value = 9
+    character_repo.max_order_index.return_value = -1
+    ai.character_info.return_value = {"pinyin": "", "words": []}
 
-    result = await service.batch_import(
-        "l1",
-        items=[
-            {"char": "山", "pinyin": "shān", "meaning": None},
-            {"char": "水", "pinyin": "shuǐ", "meaning": None},
-        ],
-    )
+    result = await service.ai_add("l1", "字")
 
-    assert result["ok"] == 2
-    # save_many should have been called once
-    character_repo.save_many.assert_awaited_once()
-    saved = character_repo.save_many.await_args.args[0]
-    assert [c.order_index for c in saved] == [10, 11]
+    assert result["ok"] == 0
+    assert result["failed"][0]["char"] == "字"
+    assert "格式" in result["failed"][0]["reason"]
 
 
 @pytest.mark.asyncio
@@ -208,8 +235,8 @@ async def test_update_character_char_conflict(service, character_repo):
     character_repo.find_by_char.return_value = _character("c2", "口")
     with pytest.raises(ParamException) as exc:
         await service.update_character(
-            "c1", char="口", pinyin=None, meaning=None,
-            meaning_set=False, order_index=None,
+            "c1", char="口", pinyin=None, example_words=None,
+            example_words_set=False, order_index=None,
         )
     assert exc.value.code == 2011
 
@@ -221,28 +248,26 @@ async def test_update_character_success(service, character_repo):
     character_repo.find_by_char.return_value = None
 
     result = await service.update_character(
-        "c1", char="人口", pinyin="rén kǒu", meaning="new",
-        meaning_set=True, order_index=3,
+        "c1", char="口", pinyin="kǒu", example_words=["口水", "开口"],
+        example_words_set=True, order_index=3,
     )
 
-    # actually char must be single hanzi — schema handles that; here we bypass to
-    # test service logic: it stores whatever the schema passes through.
-    assert result["pinyin"] == "rén kǒu"
-    assert result["meaning"] == "new"
+    assert result["pinyin"] == "kǒu"
+    assert result["example_words"] == ["口水", "开口"]
     assert result["order_index"] == 3
 
 
 @pytest.mark.asyncio
-async def test_update_character_meaning_cleared_when_set(service, character_repo):
+async def test_update_character_words_cleared_when_set(service, character_repo):
     original = _character("c1", "人")
-    original.meaning = "old"
+    original.example_words = ["a", "b"]
     character_repo.find_by_id.return_value = original
 
     result = await service.update_character(
-        "c1", char=None, pinyin=None, meaning=None,
-        meaning_set=True, order_index=None,
+        "c1", char=None, pinyin=None, example_words=None,
+        example_words_set=True, order_index=None,
     )
-    assert result["meaning"] is None
+    assert result["example_words"] == []
 
 
 @pytest.mark.asyncio

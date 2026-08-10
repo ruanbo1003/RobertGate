@@ -6,7 +6,6 @@ import type {
   EnglishThemesResponse,
   QuizResponse,
   Text2ImageResponse,
-  TranslateAction,
   TranslateResponse,
 } from '../types/aiTools'
 
@@ -42,13 +41,24 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
 }
 
 // --- 翻译 / 英文优化 ---
-export function translate(
-  text: string,
-  action: TranslateAction
-): Promise<ApiResponse<TranslateResponse>> {
+export function translate(text: string): Promise<ApiResponse<TranslateResponse>> {
   return request('/ai/translate', {
     method: 'POST',
-    body: JSON.stringify({ text, action }),
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function grammar(text: string): Promise<ApiResponse<TranslateResponse>> {
+  return request('/ai/grammar', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function native(text: string): Promise<ApiResponse<TranslateResponse>> {
+  return request('/ai/native', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
   })
 }
 

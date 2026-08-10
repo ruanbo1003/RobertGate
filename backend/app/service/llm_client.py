@@ -1,8 +1,10 @@
-"""基于 LangChain + OpenRouter 的 AIClient 实现。
+"""基于 LangChain + OpenAI 兼容协议的 AIClient 实现。
 
-只覆盖翻译相关的三个方法（translate / grammar_correct / rewrite_native）。
-其余 AIClient Protocol 方法（practice_text / generate_image）
-委托给内嵌的 MockAIClient，避免影响 hanzi / t2i 等其它模块。
+支持任意 OpenAI 兼容 endpoint：智谱 BigModel / OpenRouter / DeepSeek / OpenAI 等，
+通过 LLM_BASE_URL + LLM_MODEL + LLM_API_KEY 配置切换。
+
+覆盖 translate / grammar_correct / rewrite_native / character_info / practice_text，
+其余方法（generate_image）委托给内嵌的 MockAIClient。
 """
 
 from __future__ import annotations
@@ -81,9 +83,11 @@ PRACTICE_TEXT_PROMPT = ChatPromptTemplate.from_messages(
             "你是一名儿童中文启蒙老师，请为 4-8 岁小朋友生成一段练习短文。\n"
             "已学字（他们能认得的字）：{learned_chars}\n"
             "要求：\n"
-            "1. 生成一段 20-40 个汉字的简单短文，尽量使用已学字。\n"
-            "2. 允许出现少量（约 10-20%）的常见简单新字，让内容自然。\n"
-            "3. 主题贴近生活：家庭、动物、天气、食物、玩耍等。\n"
+            "1. 短文长度需与已学字数量匹配：目标 {target_min}-{target_max} 个汉字。"
+            "已学字少时生成更短（一两句话即可），已学字多时可以写成两三句连贯的小段落。\n"
+            "2. 尽量使用已学字。新字比例控制在 20% 以内；"
+            "已学字很少（< 10）时优先只用已学字，允许不出现新字。\n"
+            "3. 主题贴近生活：家庭、动物、天气、食物、玩耍等；内容自然、口语化，避免生硬拼凑。\n"
             "4. 只输出 JSON，字段：text（string，短文本身，可以含标点），"
             "annotations（数组，text 中每个汉字给出 {{char, pinyin}}，非汉字跳过），"
             "new_chars（数组，本次用到的、不在已学字里的汉字，去重）。\n"
@@ -92,14 +96,28 @@ PRACTICE_TEXT_PROMPT = ChatPromptTemplate.from_messages(
         ),
         (
             "user",
-            "已学字数量：{count}。请生成一段简单练习短文。",
+            "已学字数量：{count}。目标长度：{target_min}-{target_max} 个汉字。请生成一段短文。",
         ),
     ]
 )
 
 
-class OpenRouterAIClient:
-    """真实 AI 客户端：翻译 3 个动作走 OpenRouter，其余方法委托给 Mock。"""
+def _practice_text_target_range(count: int) -> tuple[int, int]:
+    """根据已学字数量返回目标短文长度区间 (min, max)。
+
+    - 少（3-10）：约 10-20 字，一两句话
+    - 中（10-40）：随学习量线性放大
+    - 多（40+）：上限约 60-100 字
+    """
+    target_min = max(10, min(60, int(count * 0.7)))
+    target_max = max(20, min(100, int(count * 1.3)))
+    if target_max <= target_min:
+        target_max = target_min + 10
+    return target_min, target_max
+
+
+class LLMClient:
+    """基于 OpenAI 兼容 endpoint 的真实 AI 客户端；未实现的能力委托给 Mock。"""
 
     def __init__(self, api_key: str, model: str, base_url: str) -> None:
         self._llm = ChatOpenAI(
@@ -108,6 +126,7 @@ class OpenRouterAIClient:
             base_url=base_url,
             temperature=0.3,
             timeout=30,
+            extra_body={"thinking": {"type": "disabled"}},
         )
         self._fallback = MockAIClient()
 
@@ -154,8 +173,6 @@ class OpenRouterAIClient:
             "sentence_pinyin": "",
         }
 
-    # --- 未实现的能力，委托给 Mock ---
-
     async def practice_text(self, learned_chars: list[str]) -> dict:
         """返回 {text, annotations: [{char, pinyin}], new_chars}."""
         chain = (
@@ -163,10 +180,13 @@ class OpenRouterAIClient:
             | self._llm.bind(response_format={"type": "json_object"})
             | JsonOutputParser()
         )
+        target_min, target_max = _practice_text_target_range(len(learned_chars))
         out = await chain.ainvoke(
             {
                 "learned_chars": "、".join(learned_chars) if learned_chars else "（无）",
                 "count": len(learned_chars),
+                "target_min": target_min,
+                "target_max": target_max,
             }
         )
         text = str(out.get("text") or "").strip()

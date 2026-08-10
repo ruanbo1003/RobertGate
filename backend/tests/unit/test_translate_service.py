@@ -17,12 +17,11 @@ def service(ai):
 
 
 @pytest.mark.asyncio
-async def test_translate_action(service, ai):
+async def test_translate(service, ai):
     ai.translate.return_value = ("zh", "en", "Hello")
 
-    result = await service.process("你好", "translate")
+    result = await service.translate("你好")
 
-    assert result["action"] == "translate"
     assert result["source_lang"] == "zh"
     assert result["target_lang"] == "en"
     assert result["result"] == "Hello"
@@ -30,10 +29,10 @@ async def test_translate_action(service, ai):
 
 
 @pytest.mark.asyncio
-async def test_grammar_action(service, ai):
+async def test_grammar(service, ai):
     ai.grammar_correct.return_value = "I am fine."
 
-    result = await service.process("i am fine", "grammar")
+    result = await service.grammar("i am fine")
 
     assert result["source_lang"] == "en"
     assert result["target_lang"] == "en"
@@ -41,10 +40,10 @@ async def test_grammar_action(service, ai):
 
 
 @pytest.mark.asyncio
-async def test_native_action(service, ai):
+async def test_native(service, ai):
     ai.rewrite_native.return_value = "How's it going?"
 
-    result = await service.process("How are you doing today", "native")
+    result = await service.native("How are you doing today")
 
     assert result["result"] == "How's it going?"
 
@@ -54,5 +53,5 @@ async def test_ai_failure_wraps_to_server_exception(service, ai):
     ai.translate.side_effect = RuntimeError("upstream down")
 
     with pytest.raises(ServerException) as exc_info:
-        await service.process("hello", "translate")
+        await service.translate("hello")
     assert exc_info.value.code == 5001

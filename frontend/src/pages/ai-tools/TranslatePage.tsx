@@ -1,8 +1,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Languages, Wand2, Sparkles, Copy, Check, AlertCircle } from 'lucide-react'
-import { translate } from '../../services/aiTools'
+import { grammar, native, translate } from '../../services/aiTools'
 import type { TranslateAction, TranslateResponse } from '../../types/aiTools'
+
+const actionFns: Record<TranslateAction, (text: string) => ReturnType<typeof translate>> = {
+  translate,
+  grammar,
+  native,
+}
 
 const actions: { key: TranslateAction; label: string; icon: typeof Languages }[] = [
   { key: 'translate', label: '翻译', icon: Languages },
@@ -20,6 +26,7 @@ export default function TranslatePage() {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState<TranslateAction | null>(null)
   const [result, setResult] = useState<TranslateResponse | null>(null)
+  const [lastAction, setLastAction] = useState<TranslateAction | null>(null)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
 
@@ -28,10 +35,11 @@ export default function TranslatePage() {
   const handleAction = async (action: TranslateAction) => {
     setLoading(action)
     setError('')
-    const res = await translate(text, action)
+    const res = await actionFns[action](text)
     setLoading(null)
     if (res.code === 0) {
       setResult(res.data)
+      setLastAction(action)
       setCopied(false)
     } else {
       setError(res.message || '请求失败')
@@ -108,7 +116,7 @@ export default function TranslatePage() {
           <div className="flex items-center justify-between px-5 py-3 border-b border-border">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wider text-primary bg-primary-light px-2 py-0.5 rounded-[var(--radius-sm)]">
-                {actionLabel[result.action]}
+                {lastAction ? actionLabel[lastAction] : ''}
               </span>
               <span className="text-xs text-text-muted">
                 {result.source_lang} → {result.target_lang}

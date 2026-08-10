@@ -4,31 +4,26 @@ from pydantic import ValidationError
 from app.schemas.ai_tools import (
     QuizRequest,
     Text2ImageRequest,
-    TranslateRequest,
+    TextRequest,
 )
 
 
-# --- Translate ---
+# --- Translate / Grammar / Native (共用 TextRequest) ---
 
 
-def test_translate_request_ok():
-    req = TranslateRequest(text="hello", action="translate")
-    assert req.action == "translate"
+def test_text_request_ok():
+    req = TextRequest(text="hello")
+    assert req.text == "hello"
 
 
-def test_translate_request_empty_text():
+def test_text_request_empty_text():
     with pytest.raises(ValidationError):
-        TranslateRequest(text="   ", action="translate")
+        TextRequest(text="   ")
 
 
-def test_translate_request_text_too_long():
+def test_text_request_too_long():
     with pytest.raises(ValidationError):
-        TranslateRequest(text="a" * 2001, action="translate")
-
-
-def test_translate_request_invalid_action():
-    with pytest.raises(ValidationError):
-        TranslateRequest(text="hi", action="unknown")  # type: ignore[arg-type]
+        TextRequest(text="a" * 2001)
 
 
 # --- Quiz ---

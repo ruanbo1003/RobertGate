@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api.dependencies import get_admin_hanzi_service, require_admin
 from app.core.response import success
 from app.schemas.hanzi import (
-    BatchImportRequest,
+    AiAddRequest,
     CharacterCreateRequest,
     CharacterUpdateRequest,
     LevelCreateRequest,
@@ -85,21 +85,19 @@ async def create_character(
     service: AdminHanziService = Depends(get_admin_hanzi_service),
 ):
     data = await service.create_character(
-        level_id, body.char, body.pinyin, body.meaning, body.order_index
+        level_id, body.char, body.pinyin, body.example_words, body.order_index
     )
     return success(data)
 
 
-@router.post("/levels/{level_id}/characters/batch")
-async def batch_import_characters(
+@router.post("/levels/{level_id}/characters/ai-add")
+async def ai_add_characters(
     level_id: str,
-    body: BatchImportRequest,
+    body: AiAddRequest,
     _: str = Depends(require_admin),
     service: AdminHanziService = Depends(get_admin_hanzi_service),
 ):
-    data = await service.batch_import(
-        level_id, [item.model_dump() for item in body.items]
-    )
+    data = await service.ai_add(level_id, body.text)
     return success(data)
 
 
@@ -110,13 +108,13 @@ async def update_character(
     _: str = Depends(require_admin),
     service: AdminHanziService = Depends(get_admin_hanzi_service),
 ):
-    meaning_set = "meaning" in body.model_fields_set
+    example_words_set = "example_words" in body.model_fields_set
     data = await service.update_character(
         character_id,
         char=body.char,
         pinyin=body.pinyin,
-        meaning=body.meaning,
-        meaning_set=meaning_set,
+        example_words=body.example_words,
+        example_words_set=example_words_set,
         order_index=body.order_index,
     )
     return success(data)

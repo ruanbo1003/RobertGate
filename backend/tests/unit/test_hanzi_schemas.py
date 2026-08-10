@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.hanzi import (
-    BatchImportRequest,
+    AiAddRequest,
     CharacterCreateRequest,
     CharacterUpdateRequest,
     LevelCreateRequest,
@@ -72,8 +72,11 @@ def test_level_update_all_none():
 
 
 def test_char_create_ok():
-    req = CharacterCreateRequest(char="人", pinyin="rén", meaning="人类")
+    req = CharacterCreateRequest(
+        char="人", pinyin="rén", example_words=["人类", "人口"]
+    )
     assert req.char == "人"
+    assert req.example_words == ["人类", "人口"]
 
 
 def test_char_create_non_hanzi():
@@ -96,6 +99,20 @@ def test_char_create_pinyin_too_long():
         CharacterCreateRequest(char="人", pinyin="a" * 33)
 
 
+def test_char_create_example_word_too_long():
+    with pytest.raises(ValidationError):
+        CharacterCreateRequest(
+            char="人", pinyin="rén", example_words=["a" * 17]
+        )
+
+
+def test_char_create_example_words_strip_empty():
+    req = CharacterCreateRequest(
+        char="人", pinyin="rén", example_words=["  人类  ", "", "  "]
+    )
+    assert req.example_words == ["人类"]
+
+
 # ---------- CharacterUpdateRequest ----------
 
 
@@ -105,21 +122,31 @@ def test_char_update_partial():
     assert req.char is None
 
 
-# ---------- BatchImportRequest ----------
+def test_char_update_example_words_omitted():
+    req = CharacterUpdateRequest(pinyin="rén")
+    assert req.example_words is None
+    assert "example_words" not in req.model_fields_set
 
 
-def test_batch_import_ok():
-    req = BatchImportRequest(items=[{"char": "人", "pinyin": "rén"}])  # type: ignore[list-item]
-    assert len(req.items) == 1
-    assert req.items[0].char == "人"
+def test_char_update_example_words_explicit_empty():
+    req = CharacterUpdateRequest(example_words=[])
+    assert req.example_words == []
+    assert "example_words" in req.model_fields_set
 
 
-def test_batch_import_empty():
+# ---------- AiAddRequest ----------
+
+
+def test_ai_add_ok():
+    req = AiAddRequest(text="你好世界")
+    assert req.text == "你好世界"
+
+
+def test_ai_add_empty():
     with pytest.raises(ValidationError):
-        BatchImportRequest(items=[])
+        AiAddRequest(text="   ")
 
 
-def test_batch_import_too_many():
-    items = [{"char": "人", "pinyin": "rén"} for _ in range(201)]
+def test_ai_add_too_long():
     with pytest.raises(ValidationError):
-        BatchImportRequest(items=items)  # type: ignore[arg-type]
+        AiAddRequest(text="字" * 2001)

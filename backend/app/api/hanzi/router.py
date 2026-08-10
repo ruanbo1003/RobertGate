@@ -5,7 +5,7 @@ from app.api.dependencies import (
     get_hanzi_service,
 )
 from app.core.response import success
-from app.schemas.hanzi import UpdateProgressRequest
+from app.schemas.hanzi import PracticeTextRequest, UpdateProgressRequest
 from app.service.hanzi_service import HanziService
 
 router = APIRouter(prefix="/hanzi", tags=["hanzi"])
@@ -38,4 +38,14 @@ async def update_progress(
     service: HanziService = Depends(get_hanzi_service),
 ):
     data = await service.update_progress(user_id, character_id, body.learned)
+    return success(data)
+
+
+@router.post("/practice-text")
+async def generate_practice_text(
+    body: PracticeTextRequest,
+    user_id: str = Depends(get_current_user_id),
+    service: HanziService = Depends(get_hanzi_service),
+):
+    data = await service.generate_practice_text(user_id, body.level_id)
     return success(data)

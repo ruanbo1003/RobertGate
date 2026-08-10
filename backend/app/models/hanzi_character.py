@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -20,7 +21,7 @@ class HanziCharacter(Base):
     )
     char: Mapped[str] = mapped_column(String(4), unique=True, index=True)
     pinyin: Mapped[str] = mapped_column(String(32))
-    meaning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    example_words: Mapped[list[str]] = mapped_column(JSONB, default=list)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

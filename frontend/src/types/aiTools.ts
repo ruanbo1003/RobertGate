@@ -4,13 +4,11 @@
 // --- 翻译 ---
 export type TranslateAction = 'translate' | 'grammar' | 'native'
 
-export interface TranslateRequest {
+export interface TextRequest {
   text: string
-  action: TranslateAction
 }
 
 export interface TranslateResponse {
-  action: TranslateAction
   source_lang: string
   target_lang: string
   result: string

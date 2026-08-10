@@ -5,26 +5,35 @@ import type { HanziCharacter } from '../../types/hanzi'
 interface Props {
   open: boolean
   onClose: () => void
-  onSubmit: (payload: { char: string; pinyin: string; meaning: string; order_index: number }) => void
+  onSubmit: (payload: { char: string; pinyin: string; example_words: string[]; order_index: number }) => void
   character: HanziCharacter | null
   nextOrderIndex: number
   submitting?: boolean
 }
 
 const HANZI_RE = /^[\u4e00-\u9fa5]$/
+const MAX_WORDS = 20
+const MAX_WORD_LEN = 16
+
+function parseWords(text: string): string[] {
+  return text
+    .split(/[\n,，、\s]+/)
+    .map((w) => w.trim())
+    .filter(Boolean)
+}
 
 export default function CharacterEditModal({ open, onClose, onSubmit, character, nextOrderIndex, submitting }: Props) {
   const [char, setChar] = useState('')
   const [pinyin, setPinyin] = useState('')
-  const [meaning, setMeaning] = useState('')
+  const [wordsText, setWordsText] = useState('')
   const [orderIndex, setOrderIndex] = useState(0)
-  const [errors, setErrors] = useState<{ char?: string; pinyin?: string }>({})
+  const [errors, setErrors] = useState<{ char?: string; pinyin?: string; words?: string }>({})
 
   useEffect(() => {
     if (!open) return
     setChar(character?.char ?? '')
     setPinyin(character?.pinyin ?? '')
-    setMeaning(character?.meaning ?? '')
+    setWordsText((character?.example_words ?? []).join('、'))
     setOrderIndex(character?.order_index ?? nextOrderIndex)
     setErrors({})
   }, [open, character, nextOrderIndex])
@@ -34,6 +43,9 @@ export default function CharacterEditModal({ open, onClose, onSubmit, character,
     if (!char.trim()) next.char = '必填'
     else if (!HANZI_RE.test(char.trim())) next.char = '必须是 1 个汉字'
     if (!pinyin.trim()) next.pinyin = '必填'
+    const words = parseWords(wordsText)
+    if (words.some((w) => w.length > MAX_WORD_LEN)) next.words = `单个例词不超过 ${MAX_WORD_LEN} 字符`
+    else if (words.length > MAX_WORDS) next.words = `例词最多 ${MAX_WORDS} 条`
     setErrors(next)
     return Object.keys(next).length === 0
   }
@@ -43,7 +55,7 @@ export default function CharacterEditModal({ open, onClose, onSubmit, character,
     onSubmit({
       char: char.trim(),
       pinyin: pinyin.trim(),
-      meaning: meaning.trim(),
+      example_words: parseWords(wordsText),
       order_index: orderIndex,
     })
   }
@@ -123,14 +135,27 @@ export default function CharacterEditModal({ open, onClose, onSubmit, character,
         </div>
 
         <div>
-          <label className="block text-[13px] font-semibold text-text-primary mb-1.5">释义</label>
+          <label className="block text-[13px] font-semibold text-text-primary mb-1.5">
+            例词
+            <span className="ml-2 text-xs text-text-muted font-normal">
+              选填 · 用中英文逗号 / 顿号 / 空格 / 换行分隔
+            </span>
+          </label>
           <textarea
-            value={meaning}
-            onChange={(e) => setMeaning(e.target.value)}
-            placeholder="选填 · 简短释义"
+            value={wordsText}
+            onChange={(e) => {
+              setWordsText(e.target.value)
+              if (errors.words) setErrors({ ...errors, words: undefined })
+            }}
+            placeholder="人类、大人、人口、人们"
             rows={2}
-            className="w-full px-3 py-2 text-base bg-card border border-border rounded-[var(--radius-sm)] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-shadow resize-none"
+            className={`w-full px-3 py-2 text-base bg-card border rounded-[var(--radius-sm)] focus:outline-none transition-shadow resize-none ${
+              errors.words
+                ? 'border-error focus:ring-2 focus:ring-error/30'
+                : 'border-border focus:ring-2 focus:ring-primary/30 focus:border-primary'
+            }`}
           />
+          {errors.words && <p className="text-xs text-error mt-1.5">{errors.words}</p>}
         </div>
 
         <div>

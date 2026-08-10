@@ -1,16 +1,13 @@
-from typing import Literal
-
 from pydantic import BaseModel, Field, field_validator
 
 
 # --- Translate ---
 
-TranslateAction = Literal["translate", "grammar", "native"]
 
+class TextRequest(BaseModel):
+    """翻译 / 语法修正 / 改地道 共用的请求体。"""
 
-class TranslateRequest(BaseModel):
     text: str
-    action: TranslateAction
 
     @field_validator("text")
     @classmethod

@@ -1,12 +1,27 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, ChevronLeft } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
+import HanziGridTab from '../../components/hanzi/HanziGridTab'
+import HanziRandomTab from '../../components/hanzi/HanziRandomTab'
+import HanziPracticeTab from '../../components/hanzi/HanziPracticeTab'
 import { getLevelCharacters, updateProgress } from '../../services/hanzi'
 import type { HanziCharacter, HanziLevelSummary } from '../../types/hanzi'
 
+type TabKey = 'grid' | 'random' | 'practice'
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'grid', label: '字表' },
+  { key: 'random', label: '随机学习' },
+  { key: 'practice', label: '组合练习' },
+]
+
 export default function HanziCharacterGridPage() {
   const { levelId = '' } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const rawTab = searchParams.get('tab')
+  const activeTab: TabKey =
+    rawTab === 'random' || rawTab === 'practice' ? rawTab : 'grid'
+
   const [level, setLevel] = useState<HanziLevelSummary | null>(null)
   const [chars, setChars] = useState<HanziCharacter[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,10 +47,16 @@ export default function HanziCharacterGridPage() {
     }
   }, [levelId])
 
+  const setActiveTab = (t: TabKey) => {
+    const next = new URLSearchParams(searchParams)
+    if (t === 'grid') next.delete('tab')
+    else next.set('tab', t)
+    setSearchParams(next, { replace: true })
+  }
+
   const toggle = async (c: HanziCharacter) => {
     if (savingId) return
     const next = !c.learned
-    // 乐观更新
     const now = new Date().toISOString()
     setChars((cs) =>
       cs.map((x) =>
@@ -46,7 +67,6 @@ export default function HanziCharacterGridPage() {
     const res = await updateProgress(c.id, next)
     setSavingId(null)
     if (res.code !== 0) {
-      // 回滚
       setChars((cs) =>
         cs.map((x) =>
           x.id === c.id ? { ...x, learned: c.learned, learned_at: c.learned_at } : x,
@@ -132,59 +152,33 @@ export default function HanziCharacterGridPage() {
         </div>
       </div>
 
-      {chars.length === 0 ? (
-        <div className="bg-card border border-border rounded-[var(--radius-lg)] p-12 text-center">
-          <div className="text-4xl mb-3">📝</div>
-          <p className="text-sm text-text-muted">该级别暂无字条</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-          {[...chars]
-            .sort((a, b) => a.order_index - b.order_index)
-            .map((c) => (
-              <motion.button
-                key={c.id}
-                onClick={() => toggle(c)}
-                disabled={savingId === c.id}
-                whileHover={{ y: -2 }}
-                whileTap={{ scale: 0.98 }}
-                transition={{ duration: 0.15 }}
-                className={`relative flex flex-col items-center gap-1 p-4 rounded-[var(--radius-lg)] border transition-all cursor-pointer text-left disabled:opacity-70 ${
-                  c.learned
-                    ? 'bg-success-light border-success/30'
-                    : 'bg-card border-border hover:border-primary'
-                }`}
-              >
-                {c.learned && (
-                  <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-success flex items-center justify-center">
-                    <Check size={12} className="text-white" strokeWidth={3} />
-                  </div>
-                )}
-                <div
-                  className={`text-4xl font-semibold leading-none ${
-                    c.learned ? 'text-success' : 'text-text-primary'
-                  }`}
-                >
-                  {c.char}
-                </div>
-                <div className="text-sm text-text-muted">{c.pinyin}</div>
-                {c.meaning && (
-                  <div
-                    className="text-xs text-text-muted text-center truncate w-full"
-                    title={c.meaning}
-                  >
-                    {c.meaning}
-                  </div>
-                )}
-              </motion.button>
-            ))}
-        </div>
-      )}
+      <div className="flex items-center gap-1 border-b border-border">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setActiveTab(t.key)}
+            className={`relative px-4 h-10 text-sm font-semibold cursor-pointer transition-colors ${
+              activeTab === t.key
+                ? 'text-primary'
+                : 'text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {t.label}
+            {activeTab === t.key && (
+              <span className="absolute -bottom-px left-0 right-0 h-0.5 bg-primary" />
+            )}
+          </button>
+        ))}
+      </div>
 
-      {chars.length > 0 && (
-        <p className="text-xs text-text-muted text-center">
-          点击字条切换「已学 / 未学」· 已学字条会加上对勾并高亮
-        </p>
+      {activeTab === 'grid' && (
+        <HanziGridTab characters={chars} onToggle={toggle} savingId={savingId} />
+      )}
+      {activeTab === 'random' && (
+        <HanziRandomTab characters={chars} onToggle={toggle} />
+      )}
+      {activeTab === 'practice' && (
+        <HanziPracticeTab levelId={levelId} learnedCount={learnedCount} />
       )}
     </div>
   )

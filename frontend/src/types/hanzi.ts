@@ -32,7 +32,7 @@ export interface HanziCharacter {
   id: string
   char: string
   pinyin: string
-  meaning: string | null
+  example_words: string[]
   order_index: number
   learned?: boolean
   learned_at?: string | null
@@ -74,28 +74,48 @@ export interface UpdateLevelRequest {
 export interface CreateCharacterRequest {
   char: string
   pinyin: string
-  meaning?: string
+  example_words?: string[]
   order_index?: number
 }
 
 export interface UpdateCharacterRequest {
   char?: string
   pinyin?: string
-  meaning?: string
+  example_words?: string[]
   order_index?: number
 }
 
-export interface BatchImportItem {
+// --- Admin：AI 批量添加 ---
+export interface AiAddRequest {
+  text: string
+}
+
+export interface AiAddedCharacter {
+  id: string
   char: string
   pinyin: string
-  meaning?: string
+  example_words: string[]
+  order_index: number
+  level_id?: string
+  created_at?: string
+  updated_at?: string
 }
 
-export interface BatchImportRequest {
-  items: BatchImportItem[]
-}
-
-export interface BatchImportResult {
+export interface AiAddResponse {
   ok: number
+  added: AiAddedCharacter[]
+  skipped: { char: string; reason: string }[]
   failed: { char: string; reason: string }[]
+}
+
+// --- 组合练习 ---
+export interface PinyinAnnotation {
+  char: string
+  pinyin: string
+}
+
+export interface PracticeTextResponse {
+  text: string
+  annotations: PinyinAnnotation[]
+  new_chars: string[]
 }

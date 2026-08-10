@@ -9,7 +9,7 @@ from app.core.response import success
 from app.schemas.ai_tools import (
     QuizRequest,
     Text2ImageRequest,
-    TranslateRequest,
+    TextRequest,
 )
 from app.service.english_service import EnglishService
 from app.service.t2i_service import T2IService
@@ -18,15 +18,33 @@ from app.service.translate_service import TranslateService
 router = APIRouter(tags=["ai-tools"])
 
 
-# ---------- 翻译 ----------
+# ---------- 翻译 / 语法 / 改地道 ----------
 
 
 @router.post("/ai/translate")
 async def translate(
-    body: TranslateRequest,
+    body: TextRequest,
     service: TranslateService = Depends(get_translate_service),
 ):
-    data = await service.process(body.text, body.action)
+    data = await service.translate(body.text)
+    return success(data)
+
+
+@router.post("/ai/grammar")
+async def grammar(
+    body: TextRequest,
+    service: TranslateService = Depends(get_translate_service),
+):
+    data = await service.grammar(body.text)
+    return success(data)
+
+
+@router.post("/ai/native")
+async def native(
+    body: TextRequest,
+    service: TranslateService = Depends(get_translate_service),
+):
+    data = await service.native(body.text)
     return success(data)
 
 

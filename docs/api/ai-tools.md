@@ -18,17 +18,16 @@
 
 ## 一、翻译 / 英文优化
 
-### 1.1 翻译或优化文本
+三个接口共用同一个请求体和响应体，仅路径不同。
 
-**POST** `/api/v1/ai/translate`
-
-对输入文本按指定动作处理：`translate`（中英互译，自动检测方向）/ `grammar`（英文语法与拼写修正）/ `native`（英文改地道）。
+- **POST** `/api/v1/ai/translate` — 中英互译，自动检测方向
+- **POST** `/api/v1/ai/grammar` — 英文语法与拼写修正
+- **POST** `/api/v1/ai/native` — 英文改写得更地道
 
 #### 请求
 ```json
 {
-  "text": "string  // 1-2000 字符",
-  "action": "translate | grammar | native"
+  "text": "string  // 1-2000 字符"
 }
 ```
 
@@ -39,10 +38,9 @@
 {
   "code": 0,
   "data": {
-    "action": "translate",
-    "source_lang": "zh",      // zh | en，自动检测
+    "source_lang": "zh",      // translate: zh/en 自动检测；grammar/native: 固定 en
     "target_lang": "en",
-    "result": "The translated text..."
+    "result": "The processed text..."
   },
   "message": "ok"
 }
@@ -53,7 +51,6 @@
 |------|---------|------|
 | 2001 | text 不能为空 | 参数缺失 |
 | 2002 | text 超过 2000 字符 | 参数过长 |
-| 2003 | action 非法 | 不在允许枚举内 |
 | 5001 | AI 服务不可用 | 上游模型异常 |
 | 5002 | AI 响应超时 | 上游超时 |
 

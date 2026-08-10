@@ -3,14 +3,15 @@
 
 import type { ApiResponse } from '../types/auth'
 import type {
-  BatchImportItem,
-  BatchImportResult,
+  AiAddResponse,
+  AiAddedCharacter,
   CreateCharacterRequest,
   CreateLevelRequest,
   HanziCharacter,
   HanziCharacterListResponse,
   HanziLevel,
   HanziLevelListResponse,
+  PracticeTextResponse,
   UpdateCharacterRequest,
   UpdateLevelRequest,
   UpdateProgressResponse,
@@ -18,7 +19,7 @@ import type {
 import { mockCharacters as seedCharacters, mockLevels as seedLevels } from '../mocks/hanzi'
 
 const HANZI_RE = /^[\u4e00-\u9fa5]$/
-const BATCH_LIMIT = 200
+const HANZI_EXTRACT_RE = /[\u4e00-\u9fa5]/g
 
 // ---------- 内存存储 ----------
 
@@ -96,6 +97,28 @@ export async function getLevelCharactersMock(
     .sort((a, b) => a.order_index - b.order_index)
     .map(decorateCharacter)
   return delay(ok<HanziCharacterListResponse>({ level: decorateLevel(level), characters: chars }))
+}
+
+export async function getPracticeTextMock(
+  levelId: string,
+): Promise<ApiResponse<PracticeTextResponse | null>> {
+  const level = findLevel(levelId)
+  if (!level) return delay(err(2010, '级别不存在'))
+  const learned = characters.filter(
+    (c) => c.level_id === levelId && progress.has(c.id),
+  )
+  if (learned.length < 3) {
+    return delay(err(2013, `至少学完 3 个字才能开始组合练习（当前 ${learned.length}）`))
+  }
+  const sample = '今天妈妈带我上山玩。山上有树和小花，我很开心。'
+  const chineseChars = [...sample].filter((c) => /[\u4e00-\u9fa5]/.test(c))
+  const learnedSet = new Set(learned.map((c) => c.char))
+  const annotations = chineseChars.map((c) => ({ char: c, pinyin: 'mó' }))
+  const newChars = Array.from(new Set(chineseChars.filter((c) => !learnedSet.has(c))))
+  return delay(
+    ok<PracticeTextResponse>({ text: sample, annotations, new_chars: newChars }),
+    500,
+  )
 }
 
 export async function updateProgressMock(
@@ -230,7 +253,7 @@ export async function adminCreateCharacterMock(
     level_id: levelId,
     char: payload.char,
     pinyin: payload.pinyin.trim(),
-    meaning: payload.meaning?.trim() || null,
+    example_words: payload.example_words ?? [],
     order_index: orderIndex,
     learned: false,
     learned_at: null,
@@ -241,14 +264,50 @@ export async function adminCreateCharacterMock(
   return delay(ok(created))
 }
 
-export async function adminBatchImportMock(
+function extractHanzi(text: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const ch of text.match(HANZI_EXTRACT_RE) ?? []) {
+    if (!seen.has(ch)) {
+      seen.add(ch)
+      out.push(ch)
+    }
+  }
+  return out
+}
+
+// 简单假 AI：拼音固定 "mock"，例词 char+序号 生成 4 个
+function fakeCharacterInfo(char: string): { pinyin: string; words: string[] } {
+  return {
+    pinyin: `mock-${char}`,
+    words: [`${char}A`, `${char}B`, `${char}C`, `${char}D`],
+  }
+}
+
+export async function adminAiAddCharactersMock(
   levelId: string,
-  items: BatchImportItem[],
-): Promise<ApiResponse<BatchImportResult | null>> {
+  text: string,
+): Promise<ApiResponse<AiAddResponse | null>> {
   const level = findLevel(levelId)
   if (!level) return delay(err(2010, '级别不存在'))
-  if (!items.length) return delay(err(2001, 'items 不能为空'))
-  if (items.length > BATCH_LIMIT) return delay(err(2003, `items 超过上限 ${BATCH_LIMIT}`))
+  if (!text?.trim()) return delay(err(2001, 'text 不能为空'))
+
+  const chars = extractHanzi(text)
+  if (!chars.length) {
+    return delay(ok<AiAddResponse>({ ok: 0, added: [], skipped: [], failed: [] }))
+  }
+
+  const skipped: { char: string; reason: string }[] = []
+  const toGenerate: string[] = []
+  for (const c of chars) {
+    if (characters.some((x) => x.char === c)) {
+      skipped.push({ char: c, reason: '已存在' })
+    } else {
+      toGenerate.push(c)
+    }
+  }
+
+  const added: AiAddedCharacter[] = []
   const failed: { char: string; reason: string }[] = []
   let base =
     characters.filter((c) => c.level_id === levelId).length
@@ -257,35 +316,42 @@ export async function adminBatchImportMock(
         ) + 1
       : 0
   const now = nowIso()
-  let okCount = 0
-  for (const item of items) {
-    if (!item.char || !HANZI_RE.test(item.char)) {
-      failed.push({ char: item.char, reason: '不是单个汉字' })
+
+  for (const ch of toGenerate) {
+    const info = fakeCharacterInfo(ch)
+    if (!info.pinyin || !info.words.length) {
+      failed.push({ char: ch, reason: 'AI 返回格式不完整' })
       continue
     }
-    if (!item.pinyin?.trim()) {
-      failed.push({ char: item.char, reason: 'pinyin 缺失' })
-      continue
-    }
-    if (characters.some((c) => c.char === item.char)) {
-      failed.push({ char: item.char, reason: '已存在（全局唯一）' })
-      continue
-    }
-    characters.push({
+    const created: HanziCharacter = {
       id: `char-${Date.now()}-${base}`,
       level_id: levelId,
-      char: item.char,
-      pinyin: item.pinyin.trim(),
-      meaning: item.meaning?.trim() || null,
+      char: ch,
+      pinyin: info.pinyin,
+      example_words: info.words.slice(0, 4),
       order_index: base++,
       learned: false,
       learned_at: null,
       created_at: now,
       updated_at: now,
+    }
+    characters.push(created)
+    added.push({
+      id: created.id,
+      char: created.char,
+      pinyin: created.pinyin,
+      example_words: created.example_words,
+      order_index: created.order_index,
+      level_id: levelId,
+      created_at: now,
+      updated_at: now,
     })
-    okCount++
   }
-  return delay(ok<BatchImportResult>({ ok: okCount, failed }), 300)
+
+  return delay(
+    ok<AiAddResponse>({ ok: added.length, added, skipped, failed }),
+    400,
+  )
 }
 
 export async function adminUpdateCharacterMock(
@@ -305,8 +371,8 @@ export async function adminUpdateCharacterMock(
     if (payload.pinyin.length > 32) return delay(err(2003, 'pinyin 超长'))
     c.pinyin = payload.pinyin.trim()
   }
-  if (payload.meaning !== undefined) {
-    c.meaning = payload.meaning?.trim() || null
+  if (payload.example_words !== undefined) {
+    c.example_words = payload.example_words ?? []
   }
   if (payload.order_index !== undefined) {
     c.order_index = payload.order_index

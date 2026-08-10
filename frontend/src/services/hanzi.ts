@@ -8,14 +8,14 @@
 
 import type { ApiResponse } from '../types/auth'
 import type {
-  BatchImportItem,
-  BatchImportResult,
+  AiAddResponse,
   CreateCharacterRequest,
   CreateLevelRequest,
   HanziCharacter,
   HanziCharacterListResponse,
   HanziLevel,
   HanziLevelListResponse,
+  PracticeTextResponse,
   UpdateCharacterRequest,
   UpdateLevelRequest,
   UpdateProgressResponse,
@@ -77,6 +77,16 @@ export function updateProgress(
   })
 }
 
+export function getPracticeText(
+  levelId: string,
+): Promise<ApiResponse<PracticeTextResponse | null>> {
+  if (USE_MOCK) return mock.getPracticeTextMock(levelId)
+  return request('/hanzi/practice-text', {
+    method: 'POST',
+    body: JSON.stringify({ level_id: levelId }),
+  })
+}
+
 // ---------- Admin：级别 ----------
 
 export function adminListLevels(): Promise<ApiResponse<HanziLevelListResponse>> {
@@ -132,14 +142,14 @@ export function adminCreateCharacter(
   })
 }
 
-export function adminBatchImport(
+export function adminAiAddCharacters(
   levelId: string,
-  items: BatchImportItem[],
-): Promise<ApiResponse<BatchImportResult | null>> {
-  if (USE_MOCK) return mock.adminBatchImportMock(levelId, items)
-  return request(`/admin/hanzi/levels/${encodeURIComponent(levelId)}/characters/batch`, {
+  text: string,
+): Promise<ApiResponse<AiAddResponse | null>> {
+  if (USE_MOCK) return mock.adminAiAddCharactersMock(levelId, text)
+  return request(`/admin/hanzi/levels/${encodeURIComponent(levelId)}/characters/ai-add`, {
     method: 'POST',
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({ text }),
   })
 }
 
