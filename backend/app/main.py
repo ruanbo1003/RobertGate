@@ -10,6 +10,7 @@ from app.core.setting import get_settings
 
 from app.api.admin.hanzi_router import router as admin_hanzi_router
 from app.api.ai_tools.router import router as ai_tools_router
+from app.api.ai_tools.t2i_router import router as t2i_router
 from app.api.auth.router import router as auth_router
 from app.api.gallery.router import router as gallery_router
 from app.api.hanzi.router import router as hanzi_router
@@ -43,6 +44,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(gallery_router, prefix="/api/v1")
 app.include_router(ai_tools_router, prefix="/api/v1")
+app.include_router(t2i_router, prefix="/api/v1")
 app.include_router(hanzi_router, prefix="/api/v1")
 app.include_router(admin_hanzi_router, prefix="/api/v1")
 app.include_router(util_router, prefix="/api")

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     LLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4/"
     LLM_MODEL: str = "glm-4.6"
 
+    # 文生图（默认智谱 CogView-3-Flash，走 OpenAI 兼容的 /images/generations）
+    T2I_MODEL: str = "cogview-3-flash"
+    T2I_SIZE: str = "1024x1024"
+
     model_config = SettingsConfigDict(
         env_file=(".env", f".env.{env}"),
         env_file_encoding="utf-8",

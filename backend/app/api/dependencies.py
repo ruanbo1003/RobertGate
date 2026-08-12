@@ -6,6 +6,12 @@ from app.core.exceptions import AuthException
 from app.repository.hanzi_character_repo import HanziCharacterRepo
 from app.repository.hanzi_level_repo import HanziLevelRepo
 from app.repository.hanzi_progress_repo import HanziProgressRepo
+from app.repository.t2i_repo import (
+    T2IImageBlobRepo,
+    T2IImageRepo,
+    T2ITaskRepo,
+    T2ITemplateRepo,
+)
 from app.repository.user_repo import UserRepo
 from app.service.admin_hanzi_service import AdminHanziService
 from app.service.ai_client import AIClient, get_ai_client
@@ -13,6 +19,7 @@ from app.service.auth_service import AuthService
 from app.service.english_service import EnglishService
 from app.service.hanzi_service import HanziService
 from app.service.t2i_service import T2IService
+from app.service.t2i_task_service import T2ITaskService
 from app.service.translate_service import TranslateService
 
 
@@ -84,3 +91,16 @@ async def get_t2i_service(
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> T2IService:
     return T2IService(ai=ai)
+
+
+async def get_t2i_task_service(
+    db: AsyncSession = Depends(get_db),
+    ai: AIClient = Depends(get_ai_client_dep),
+) -> T2ITaskService:
+    return T2ITaskService(
+        template_repo=T2ITemplateRepo(db),
+        task_repo=T2ITaskRepo(db),
+        image_repo=T2IImageRepo(db),
+        blob_repo=T2IImageBlobRepo(db),
+        ai=ai,
+    )

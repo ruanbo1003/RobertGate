@@ -17,6 +17,8 @@ import HanziCharacterGridPage from './pages/ai-tools/HanziCharacterGridPage'
 import EnglishThemesPage from './pages/ai-tools/EnglishThemesPage'
 import EnglishQuizPage from './pages/ai-tools/EnglishQuizPage'
 import Text2ImagePage from './pages/ai-tools/Text2ImagePage'
+import T2ITaskListPage from './pages/ai-tools/T2ITaskListPage'
+import T2ITaskDetailPage from './pages/ai-tools/T2ITaskDetailPage'
 import AdminLevelListPage from './pages/admin/AdminLevelListPage'
 import AdminCharacterListPage from './pages/admin/AdminCharacterListPage'
 
@@ -47,7 +49,16 @@ export default function App() {
             />
             <Route path="english/themes" element={<EnglishThemesPage />} />
             <Route path="english/quiz" element={<EnglishQuizPage />} />
-            <Route path="text-to-image" element={<Text2ImagePage />} />
+            <Route
+              path="text-to-image"
+              element={<Navigate to="/ai-tools/text-to-image/playground" replace />}
+            />
+            <Route path="text-to-image/playground" element={<Text2ImagePage />} />
+            <Route path="text-to-image/:templateCode" element={<T2ITaskListPage />} />
+            <Route
+              path="text-to-image/:templateCode/:taskId"
+              element={<T2ITaskDetailPage />}
+            />
           </Route>
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="/bookmarks" element={<NotImplementedPage />} />

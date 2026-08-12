@@ -9,11 +9,16 @@
 
 from __future__ import annotations
 
+import logging
+
+import httpx
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from app.service.ai_client import MockAIClient, _is_chinese
+
+logger = logging.getLogger(__name__)
 
 
 # --- Prompts ---
@@ -119,7 +124,14 @@ def _practice_text_target_range(count: int) -> tuple[int, int]:
 class LLMClient:
     """基于 OpenAI 兼容 endpoint 的真实 AI 客户端；未实现的能力委托给 Mock。"""
 
-    def __init__(self, api_key: str, model: str, base_url: str) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str,
+        image_model: str = "cogview-3-flash",
+        image_size: str = "1024x1024",
+    ) -> None:
         self._llm = ChatOpenAI(
             model=model,
             api_key=api_key,
@@ -129,6 +141,10 @@ class LLMClient:
             extra_body={"thinking": {"type": "disabled"}},
         )
         self._fallback = MockAIClient()
+        self._api_key = api_key
+        self._image_url = base_url.rstrip("/") + "/images/generations"
+        self._image_model = image_model
+        self._image_size = image_size
 
     async def _run(self, prompt: ChatPromptTemplate, variables: dict) -> str:
         chain = prompt | self._llm | StrOutputParser()
@@ -201,4 +217,33 @@ class LLMClient:
         }
 
     async def generate_image(self, prompt: str) -> str:
-        return await self._fallback.generate_image(prompt)
+        """调用智谱 CogView（OpenAI 兼容 /images/generations），返回 CDN 图片 URL。
+
+        CogView-3-Flash 目前免费。上层拿到 URL 后会自行下载 bytes 落库。
+        """
+        payload = {
+            "model": self._image_model,
+            "prompt": prompt,
+            "size": self._image_size,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(self._image_url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            logger.error(
+                "cogview generate_image failed: status=%s body=%s",
+                resp.status_code,
+                resp.text[:500],
+            )
+            raise RuntimeError(f"图像生成失败 (HTTP {resp.status_code})")
+        data = resp.json()
+        items = data.get("data") or []
+        if not items or not isinstance(items, list):
+            raise RuntimeError("图像生成失败：响应缺少 data")
+        url = items[0].get("url")
+        if not url:
+            raise RuntimeError("图像生成失败：响应缺少 url")
+        return url

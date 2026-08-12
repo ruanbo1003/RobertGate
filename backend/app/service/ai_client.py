@@ -98,6 +98,8 @@ def get_ai_client() -> AIClient:
             api_key=settings.LLM_API_KEY,
             model=settings.LLM_MODEL,
             base_url=settings.LLM_BASE_URL,
+            image_model=settings.T2I_MODEL,
+            image_size=settings.T2I_SIZE,
         )
     else:
         _default_client = MockAIClient()
