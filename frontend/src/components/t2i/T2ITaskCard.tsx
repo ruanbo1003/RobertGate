@@ -23,14 +23,18 @@ export default function T2ITaskCard({ task, templateCode }: Props) {
     >
       <Link to={detailPath} className="block">
         {/* 缩略图区 */}
-        <div className="relative aspect-[4/3] bg-page grid grid-cols-2 gap-0.5">
+        <div
+          className={`relative aspect-[4/3] bg-page grid gap-0.5 ${
+            thumbs.length <= 1 ? 'grid-cols-1' : 'grid-cols-2'
+          }`}
+        >
           {hasGenerating && thumbs.length === 0 ? (
-            <div className="col-span-2 flex flex-col items-center justify-center gap-2 text-text-muted">
+            <div className="flex flex-col items-center justify-center gap-2 text-text-muted">
               <Loader2 size={20} className="animate-spin" />
               <span className="text-xs">生成中…</span>
             </div>
           ) : thumbs.length === 0 ? (
-            <div className="col-span-2 flex items-center justify-center text-text-muted text-xs">
+            <div className="flex items-center justify-center text-text-muted text-xs">
               暂无图片
             </div>
           ) : (
