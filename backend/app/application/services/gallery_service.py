@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from app.domain.errors import ServerException
+from app.domain.errors import ServerException, codes
 
 logger = logging.getLogger(__name__)
 
@@ -34,10 +34,10 @@ class GalleryService:
 
     def _list_photos_sync(self) -> dict:
         if not self._photo_dir.exists():
-            raise ServerException(5001, "照片目录不存在")
+            raise ServerException(codes.PHOTO_DIR_NOT_FOUND, "照片目录不存在")
 
         if not self._photo_dir.is_dir():
-            raise ServerException(5002, "照片目录读取失败")
+            raise ServerException(codes.PHOTO_DIR_UNREADABLE, "照片目录读取失败")
 
         try:
             files = sorted(
@@ -52,7 +52,7 @@ class GalleryService:
                 reverse=True,
             )
         except OSError:
-            raise ServerException(5002, "照片目录读取失败")
+            raise ServerException(codes.PHOTO_DIR_UNREADABLE, "照片目录读取失败")
 
         photos = []
         for f in files:

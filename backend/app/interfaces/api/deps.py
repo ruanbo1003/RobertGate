@@ -15,7 +15,7 @@ from app.application.services.t2i_service import T2IService
 from app.application.services.t2i_task_service import T2ITaskService
 from app.application.services.translate_service import TranslateService
 from app.config import get_settings
-from app.domain.errors import AuthException
+from app.domain.errors import AuthException, codes
 from app.domain.repositories.uow import UnitOfWork
 from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.database.session import get_db
@@ -36,11 +36,11 @@ async def get_current_user_id(
 ) -> str:
     """从 Authorization: Bearer <token> 提取 user_id。"""
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise AuthException(1001, "未登录")
+        raise AuthException(codes.UNAUTHORIZED, "未登录")
     token = authorization.split(" ", 1)[1].strip()
     user_id = AuthService.decode_access_token(token)
     if not user_id:
-        raise AuthException(1001, "未登录")
+        raise AuthException(codes.UNAUTHORIZED, "未登录")
     return user_id
 
 

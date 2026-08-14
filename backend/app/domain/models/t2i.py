@@ -12,7 +12,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, LargeBinary, Stri
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.errors import ParamException
+from app.domain.errors import ParamException, codes
 from app.domain.models.base import Base
 
 ITEM_MAX_LENGTH = 100
@@ -36,14 +36,16 @@ def normalize_keywords(raw: dict[str, Any]) -> dict[str, str]:
     """校验并规范化任务关键词。单变量 `item`。"""
     value = raw.get("item")
     if value is None:
-        raise ParamException(2022, "item 不能为空")
+        raise ParamException(codes.T2I_ITEM_INVALID, "item 不能为空")
     if not isinstance(value, str):
-        raise ParamException(2022, "item 必须是字符串")
+        raise ParamException(codes.T2I_ITEM_INVALID, "item 必须是字符串")
     value = value.strip()
     if not value:
-        raise ParamException(2022, "item 不能为空")
+        raise ParamException(codes.T2I_ITEM_INVALID, "item 不能为空")
     if len(value) > ITEM_MAX_LENGTH:
-        raise ParamException(2022, f"item 超长（最大 {ITEM_MAX_LENGTH} 字符）")
+        raise ParamException(
+            codes.T2I_ITEM_INVALID, f"item 超长（最大 {ITEM_MAX_LENGTH} 字符）"
+        )
     return {"item": value}
 
 
@@ -54,13 +56,18 @@ def business_status(images: list[T2IImage]) -> str:
 
 def _validate_name_and_prompt(name: str, prompt: str) -> None:
     if not name:
-        raise ParamException(2031, "name 不能为空")
+        raise ParamException(codes.T2I_TEMPLATE_NAME_INVALID, "name 不能为空")
     if len(name) > 64:
-        raise ParamException(2031, "name 超长（最大 64 字符）")
+        raise ParamException(
+            codes.T2I_TEMPLATE_NAME_INVALID, "name 超长（最大 64 字符）"
+        )
     if not prompt:
-        raise ParamException(2032, "prompt 不能为空")
+        raise ParamException(codes.T2I_TEMPLATE_PROMPT_INVALID, "prompt 不能为空")
     if ITEM_PLACEHOLDER not in prompt:
-        raise ParamException(2032, f"prompt 必须包含占位符 {ITEM_PLACEHOLDER}")
+        raise ParamException(
+            codes.T2I_TEMPLATE_PROMPT_INVALID,
+            f"prompt 必须包含占位符 {ITEM_PLACEHOLDER}",
+        )
 
 
 class T2ITemplate(Base):
@@ -91,7 +98,8 @@ class T2ITemplate(Base):
 
         if not CODE_RE.match(code):
             raise ParamException(
-                2030, "code 只允许小写字母/数字/连字符，须以字母开头，长度 2-64"
+                codes.T2I_TEMPLATE_CODE_INVALID,
+                "code 只允许小写字母/数字/连字符，须以字母开头，长度 2-64",
             )
         _validate_name_and_prompt(name, prompt)
 
@@ -128,11 +136,11 @@ class T2ITemplate(Base):
 
     def ensure_editable(self) -> None:
         if self.is_builtin:
-            raise ParamException(2035, "内置模板不可修改")
+            raise ParamException(codes.T2I_TEMPLATE_BUILTIN, "内置模板不可修改")
 
     def ensure_deletable(self) -> None:
         if self.is_builtin:
-            raise ParamException(2035, "内置模板不可删除")
+            raise ParamException(codes.T2I_TEMPLATE_BUILTIN, "内置模板不可删除")
 
     def render_prompt(self, keywords: dict[str, str]) -> str:
         return self.prompt.replace(ITEM_PLACEHOLDER, keywords["item"])
@@ -224,12 +232,16 @@ class T2IImage(Base):
 
     def set_available(self, value: bool) -> None:
         if self.status != TaskStatus.SUCCEEDED:
-            raise ParamException(2026, "只有已生成的图片可以标记")
+            raise ParamException(
+                codes.T2I_IMAGE_NOT_SUCCEEDED, "只有已生成的图片可以标记"
+            )
         self.available = value
 
     def ensure_deletable(self) -> None:
         if self.available:
-            raise ParamException(2027, "可用图片不可删除，请先取消可用")
+            raise ParamException(
+                codes.T2I_IMAGE_IN_USE, "可用图片不可删除，请先取消可用"
+            )
 
 
 class T2IImageBlob(Base):

@@ -7,7 +7,7 @@ import bcrypt
 from jose import jwt
 
 from app.config import get_settings
-from app.domain.errors import AuthException
+from app.domain.errors import AuthException, codes
 from app.domain.models.user import User
 from app.domain.repositories.uow import UnitOfWork
 
@@ -70,9 +70,9 @@ class AuthService:
 
     async def register(self, username: str, email: str, password: str) -> dict:
         if await self.uow.users.find_by_username(username):
-            raise AuthException(2010, "用户名已被使用")
+            raise AuthException(codes.USERNAME_TAKEN, "用户名已被使用")
         if await self.uow.users.find_by_email(email):
-            raise AuthException(2011, "邮箱已被注册")
+            raise AuthException(codes.EMAIL_TAKEN, "邮箱已被注册")
 
         user = User(
             id=str(uuid.uuid4()),
@@ -89,17 +89,17 @@ class AuthService:
     async def login(self, email: str, password: str) -> dict:
         user = await self.uow.users.find_by_email(email)
         if not user:
-            raise AuthException(1001, "邮箱或密码错误")
+            raise AuthException(codes.UNAUTHORIZED, "邮箱或密码错误")
 
         if not self.verify_password(password, user.hashed_password):
-            raise AuthException(1001, "邮箱或密码错误")
+            raise AuthException(codes.UNAUTHORIZED, "邮箱或密码错误")
 
         return self._auth_result(user)
 
     async def get_me(self, user_id: str) -> dict:
         user = await self.uow.users.find_by_id(user_id)
         if not user:
-            raise AuthException(1001, "未登录")
+            raise AuthException(codes.UNAUTHORIZED, "未登录")
         return self._user_dict(user)
 
     async def check_username(self, username: str) -> bool:
@@ -111,4 +111,4 @@ class AuthService:
     async def ensure_admin(self, user_id: str) -> None:
         user = await self.uow.users.find_by_id(user_id)
         if not user or user.role != "admin":
-            raise AuthException(1002, "无权限")
+            raise AuthException(codes.FORBIDDEN, "无权限")

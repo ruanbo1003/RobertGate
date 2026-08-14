@@ -1,5 +1,5 @@
 from app.application.ports import AIClient
-from app.domain.errors import ServerException
+from app.application.services._ai import ai_call
 
 
 class TranslateService:
@@ -7,28 +7,13 @@ class TranslateService:
         self.ai = ai
 
     async def translate(self, text: str) -> dict:
-        try:
-            source, target, result = await self.ai.translate(text)
-        except ServerException:
-            raise
-        except Exception as e:
-            raise ServerException(5001, f"AI 服务不可用: {e}") from e
+        source, target, result = await ai_call(self.ai.translate(text))
         return {"source_lang": source, "target_lang": target, "result": result}
 
     async def grammar(self, text: str) -> dict:
-        try:
-            result = await self.ai.grammar_correct(text)
-        except ServerException:
-            raise
-        except Exception as e:
-            raise ServerException(5001, f"AI 服务不可用: {e}") from e
+        result = await ai_call(self.ai.grammar_correct(text))
         return {"source_lang": "en", "target_lang": "en", "result": result}
 
     async def native(self, text: str) -> dict:
-        try:
-            result = await self.ai.rewrite_native(text)
-        except ServerException:
-            raise
-        except Exception as e:
-            raise ServerException(5001, f"AI 服务不可用: {e}") from e
+        result = await ai_call(self.ai.rewrite_native(text))
         return {"source_lang": "en", "target_lang": "en", "result": result}

@@ -11,7 +11,7 @@ from typing import Any
 
 from app.application.ports import AIClient
 from app.application.services.t2i_generation import T2IGenerator
-from app.domain.errors import ParamException
+from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.t2i import (
     T2IImage,
     T2ITask,
@@ -107,7 +107,7 @@ class T2ITaskService:
 
         existing = await self.uow.t2i_templates.find_by_code(tpl.code)
         if existing is not None:
-            raise ParamException(2033, "code 已存在")
+            raise ParamException(codes.T2I_TEMPLATE_CODE_TAKEN, "code 已存在")
 
         self.uow.t2i_templates.add(tpl)
         await self.uow.commit()
@@ -121,9 +121,11 @@ class T2ITaskService:
         prompt: str,
         order_index: int | None,
     ) -> dict:
-        tpl = await self.uow.t2i_templates.find_by_id(template_id)
-        if tpl is None:
-            raise ParamException(2034, "模板不存在")
+        tpl = ensure_found(
+            await self.uow.t2i_templates.find_by_id(template_id),
+            codes.T2I_TEMPLATE_NOT_FOUND,
+            "模板不存在",
+        )
         tpl.ensure_editable()
 
         tpl.apply_update(name, description, prompt, order_index)
@@ -131,15 +133,18 @@ class T2ITaskService:
         return _template_dict(tpl)
 
     async def delete_template(self, template_id: str) -> None:
-        tpl = await self.uow.t2i_templates.find_by_id(template_id)
-        if tpl is None:
-            raise ParamException(2034, "模板不存在")
+        tpl = ensure_found(
+            await self.uow.t2i_templates.find_by_id(template_id),
+            codes.T2I_TEMPLATE_NOT_FOUND,
+            "模板不存在",
+        )
         tpl.ensure_deletable()
 
         used = await self.uow.t2i_tasks.count_by_template_code(tpl.code)
         if used > 0:
             raise ParamException(
-                2036, f"该模板下已有 {used} 个任务，请先删除任务再删除模板"
+                codes.T2I_TEMPLATE_IN_USE,
+                f"该模板下已有 {used} 个任务，请先删除任务再删除模板",
             )
         await self.uow.t2i_templates.delete(tpl)
         await self.uow.commit()
@@ -149,11 +154,13 @@ class T2ITaskService:
     async def list_tasks(
         self, template_code: str, page: int, page_size: int
     ) -> dict:
-        tpl = await self.uow.t2i_templates.find_by_code(template_code)
-        if tpl is None:
-            raise ParamException(2020, "template_code 不存在")
+        tpl = ensure_found(
+            await self.uow.t2i_templates.find_by_code(template_code),
+            codes.T2I_TEMPLATE_CODE_NOT_FOUND,
+            "template_code 不存在",
+        )
         if page < 1 or page_size < 1 or page_size > 50:
-            raise ParamException(2021, "分页参数非法")
+            raise ParamException(codes.T2I_PAGINATION_INVALID, "分页参数非法")
 
         tasks, total = await self.uow.t2i_tasks.list_by_template(
             template_code, page, page_size
@@ -174,9 +181,11 @@ class T2ITaskService:
     async def create_task(
         self, template_code: str, raw_keywords: dict[str, Any]
     ) -> dict:
-        tpl = await self.uow.t2i_templates.find_by_code(template_code)
-        if tpl is None:
-            raise ParamException(2020, "template_code 不存在")
+        tpl = ensure_found(
+            await self.uow.t2i_templates.find_by_code(template_code),
+            codes.T2I_TEMPLATE_CODE_NOT_FOUND,
+            "template_code 不存在",
+        )
 
         keywords = normalize_keywords(raw_keywords)
         h = T2ITask.compute_hash(template_code, keywords)
@@ -201,9 +210,11 @@ class T2ITaskService:
         return {"existing": False, "task": _task_summary_dict(task, [image])}
 
     async def get_task(self, task_id: str) -> dict:
-        task = await self.uow.t2i_tasks.find_by_id(task_id)
-        if task is None:
-            raise ParamException(2023, "任务不存在")
+        task = ensure_found(
+            await self.uow.t2i_tasks.find_by_id(task_id),
+            codes.T2I_TASK_NOT_FOUND,
+            "任务不存在",
+        )
         images = await self.uow.t2i_images.list_by_task(task_id)
         summary = _task_summary_dict(task, images)
         summary["images_failed"] = sum(1 for i in images if i.status == "failed")
@@ -213,15 +224,19 @@ class T2ITaskService:
         }
 
     async def retry_task(self, task_id: str) -> dict:
-        task = await self.uow.t2i_tasks.find_by_id(task_id)
-        if task is None:
-            raise ParamException(2023, "任务不存在")
+        task = ensure_found(
+            await self.uow.t2i_tasks.find_by_id(task_id),
+            codes.T2I_TASK_NOT_FOUND,
+            "任务不存在",
+        )
         if await self.uow.t2i_images.has_generating(task_id):
-            raise ParamException(2024, "已有正在生成的图片，请稍候")
+            raise ParamException(codes.T2I_TASK_GENERATING, "已有正在生成的图片，请稍候")
 
-        tpl = await self.uow.t2i_templates.find_by_code(task.template_code)
-        if tpl is None:
-            raise ParamException(2020, "任务所属模板已删除")
+        tpl = ensure_found(
+            await self.uow.t2i_templates.find_by_code(task.template_code),
+            codes.T2I_TEMPLATE_CODE_NOT_FOUND,
+            "任务所属模板已删除",
+        )
 
         image = T2IImage.create(task_id)
         self.uow.t2i_images.add(image)
@@ -237,9 +252,11 @@ class T2ITaskService:
     # ---- Images ----
 
     async def patch_image(self, image_id: str, available: bool) -> dict:
-        image = await self.uow.t2i_images.find_by_id(image_id)
-        if image is None:
-            raise ParamException(2025, "图片不存在")
+        image = ensure_found(
+            await self.uow.t2i_images.find_by_id(image_id),
+            codes.T2I_IMAGE_NOT_FOUND,
+            "图片不存在",
+        )
         image.set_available(available)
 
         task = await self.uow.t2i_tasks.find_by_id(image.task_id)
@@ -256,9 +273,11 @@ class T2ITaskService:
         }
 
     async def delete_image(self, image_id: str) -> dict:
-        image = await self.uow.t2i_images.find_by_id(image_id)
-        if image is None:
-            raise ParamException(2025, "图片不存在")
+        image = ensure_found(
+            await self.uow.t2i_images.find_by_id(image_id),
+            codes.T2I_IMAGE_NOT_FOUND,
+            "图片不存在",
+        )
         image.ensure_deletable()
 
         task_id = image.task_id

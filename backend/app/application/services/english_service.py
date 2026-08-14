@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from app.domain.errors import ParamException
+from app.domain.errors import ParamException, codes
 from app.infrastructure.data.english_data import ENGLISH_THEMES, get_theme
 
 
@@ -14,9 +14,9 @@ class EnglishService:
     def generate_quiz(self, theme_id: str, count: int = 10) -> dict:
         theme = get_theme(theme_id)
         if not theme:
-            raise ParamException(2008, "theme_id 不存在")
+            raise ParamException(codes.ENGLISH_THEME_NOT_FOUND, "theme_id 不存在")
         if not theme["ready"]:
-            raise ParamException(2009, "主题尚未准备完毕")
+            raise ParamException(codes.ENGLISH_THEME_NOT_READY, "主题尚未准备完毕")
 
         # 收集所有主题的图片作为潜在干扰项
         all_images = [
@@ -26,7 +26,7 @@ class EnglishService:
         rng = random.Random()
         theme_words = theme["words"]
         if not theme_words:
-            raise ParamException(2009, "主题尚未准备完毕")
+            raise ParamException(codes.ENGLISH_THEME_NOT_READY, "主题尚未准备完毕")
 
         questions = []
         for i in range(count):

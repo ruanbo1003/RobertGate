@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime
 
 from app.application.ports import AIClient
-from app.domain.errors import ParamException
+from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.hanzi import HanziCharacter, HanziLevel, extract_hanzi
 from app.domain.repositories.uow import UnitOfWork
 
@@ -57,7 +57,7 @@ class AdminHanziService:
         self, name: str, description: str | None, order_index: int
     ) -> dict:
         if await self.uow.hanzi_levels.find_by_name(name):
-            raise ParamException(2011, "级别名称已存在")
+            raise ParamException(codes.HANZI_DUPLICATE, "级别名称已存在")
 
         level = HanziLevel.new(name, description, order_index)
         self.uow.hanzi_levels.add(level)
@@ -72,14 +72,16 @@ class AdminHanziService:
         description_set: bool,
         order_index: int | None,
     ) -> dict:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         if name is not None and name != level.name:
             duplicate = await self.uow.hanzi_levels.find_by_name(name)
             if duplicate and duplicate.id != level_id:
-                raise ParamException(2011, "级别名称已存在")
+                raise ParamException(codes.HANZI_DUPLICATE, "级别名称已存在")
             level.name = name
 
         if description_set:
@@ -95,13 +97,15 @@ class AdminHanziService:
         return _level_dict(level, total)
 
     async def delete_level(self, level_id: str) -> None:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         total = await self.uow.hanzi_characters.count_by_level(level_id)
         if total > 0:
-            raise ParamException(2012, "级别下仍有字条，请先清空")
+            raise ParamException(codes.HANZI_LEVEL_NOT_EMPTY, "级别下仍有字条，请先清空")
 
         await self.uow.hanzi_levels.delete(level)
         await self.uow.commit()
@@ -109,9 +113,11 @@ class AdminHanziService:
     # ---------- Characters ----------
 
     async def list_characters(self, level_id: str) -> dict:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
         characters = await self.uow.hanzi_characters.list_by_level(level_id)
         return {
             "level": {
@@ -131,12 +137,14 @@ class AdminHanziService:
         example_words: list[str] | None,
         order_index: int | None,
     ) -> dict:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         if await self.uow.hanzi_characters.find_by_char(char):
-            raise ParamException(2011, "该字已存在（全局唯一）")
+            raise ParamException(codes.HANZI_DUPLICATE, "该字已存在（全局唯一）")
 
         if order_index is None:
             order_index = await self.uow.hanzi_characters.max_order_index(level_id) + 1
@@ -150,9 +158,11 @@ class AdminHanziService:
 
     async def ai_add(self, level_id: str, text: str) -> dict:
         """从文本抽取汉字，用 AI 生成拼音+例词，批量入库。"""
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         chars = extract_hanzi(text)
         if not chars:
@@ -217,14 +227,16 @@ class AdminHanziService:
         example_words_set: bool,
         order_index: int | None,
     ) -> dict:
-        character = await self.uow.hanzi_characters.find_by_id(character_id)
-        if not character:
-            raise ParamException(2010, "字条不存在")
+        character = ensure_found(
+            await self.uow.hanzi_characters.find_by_id(character_id),
+            codes.HANZI_NOT_FOUND,
+            "字条不存在",
+        )
 
         if char is not None and char != character.char:
             duplicate = await self.uow.hanzi_characters.find_by_char(char)
             if duplicate and duplicate.id != character_id:
-                raise ParamException(2011, "该字已存在（全局唯一）")
+                raise ParamException(codes.HANZI_DUPLICATE, "该字已存在（全局唯一）")
             character.char = char
 
         if pinyin is not None:
@@ -241,8 +253,10 @@ class AdminHanziService:
         return _character_dict(character)
 
     async def delete_character(self, character_id: str) -> None:
-        character = await self.uow.hanzi_characters.find_by_id(character_id)
-        if not character:
-            raise ParamException(2010, "字条不存在")
+        character = ensure_found(
+            await self.uow.hanzi_characters.find_by_id(character_id),
+            codes.HANZI_NOT_FOUND,
+            "字条不存在",
+        )
         await self.uow.hanzi_characters.delete(character)
         await self.uow.commit()

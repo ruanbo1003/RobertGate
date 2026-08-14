@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.application.ports import AIClient
-from app.domain.errors import ParamException
+from app.application.services._ai import ai_call
+from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.hanzi import HanziUserProgress
 from app.domain.repositories.uow import UnitOfWork
 
@@ -43,9 +44,11 @@ class HanziService:
         }
 
     async def list_characters_for_user(self, user_id: str, level_id: str) -> dict:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         characters = await self.uow.hanzi_characters.list_by_level(level_id)
         progress_map = await self.uow.hanzi_progress.progress_map_by_level(
@@ -77,9 +80,11 @@ class HanziService:
     async def update_progress(
         self, user_id: str, character_id: str, learned: bool
     ) -> dict:
-        character = await self.uow.hanzi_characters.find_by_id(character_id)
-        if not character:
-            raise ParamException(2010, "字条不存在")
+        character = ensure_found(
+            await self.uow.hanzi_characters.find_by_id(character_id),
+            codes.HANZI_NOT_FOUND,
+            "字条不存在",
+        )
 
         existing = await self.uow.hanzi_progress.find(user_id, character_id)
         if learned:
@@ -108,9 +113,11 @@ class HanziService:
         }
 
     async def generate_practice_text(self, user_id: str, level_id: str) -> dict:
-        level = await self.uow.hanzi_levels.find_by_id(level_id)
-        if not level:
-            raise ParamException(2010, "级别不存在")
+        level = ensure_found(
+            await self.uow.hanzi_levels.find_by_id(level_id),
+            codes.HANZI_NOT_FOUND,
+            "级别不存在",
+        )
 
         characters = await self.uow.hanzi_characters.list_by_level(level_id)
         progress_map = await self.uow.hanzi_progress.progress_map_by_level(
@@ -120,18 +127,21 @@ class HanziService:
 
         if len(learned_chars) < 3:
             raise ParamException(
-                2013,
+                codes.HANZI_TOO_FEW_LEARNED,
                 f"至少学完 3 个字才能开始组合练习（当前 {len(learned_chars)}）",
             )
 
-        try:
-            raw = await self.ai.practice_text(learned_chars)
-        except Exception as e:
-            raise ParamException(5000, f"AI 生成失败：{e}") from e
+        raw = await ai_call(
+            self.ai.practice_text(learned_chars),
+            code=codes.AI_GENERATE_FAILED,
+            message="AI 生成失败",
+            sep="：",
+            exc=ParamException,
+        )
 
         text = str(raw.get("text") or "").strip()
         if not text:
-            raise ParamException(5000, "AI 返回文本为空")
+            raise ParamException(codes.AI_GENERATE_FAILED, "AI 返回文本为空")
 
         annotations_raw = raw.get("annotations") or []
         annotations: list[dict] = []
