@@ -2,11 +2,12 @@ import pytest
 
 from app.application.services.english_service import EnglishService
 from app.domain.errors import ParamException
+from app.infrastructure.data.english_data import ENGLISH_THEMES
 
 
 @pytest.fixture
 def service():
-    return EnglishService()
+    return EnglishService(themes=ENGLISH_THEMES)
 
 
 def test_list_themes_contains_all_seed_themes(service):

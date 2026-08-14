@@ -3,6 +3,10 @@ import pytest
 from app.application.services.auth_service import AuthService
 from app.domain.errors import AuthException
 from app.domain.models.user import User
+from app.infrastructure.security.jwt import JoseTokens
+from app.infrastructure.security.password import BcryptHasher
+
+HASHER = BcryptHasher()
 
 
 @pytest.fixture
@@ -12,7 +16,7 @@ def user_repo(uow):
 
 @pytest.fixture
 def auth_service(uow):
-    return AuthService(uow=uow)
+    return AuthService(uow, HASHER, JoseTokens())
 
 
 def _make_user(username="testuser", email="test@example.com", password="pass1234"):
@@ -23,7 +27,7 @@ def _make_user(username="testuser", email="test@example.com", password="pass1234
         id=str(uuid.uuid4()),
         username=username,
         email=email,
-        hashed_password=AuthService.hash_password(password),
+        hashed_password=HASHER.hash(password),
         role="user",
         created_at=datetime.now(timezone.utc),
     )

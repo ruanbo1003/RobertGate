@@ -1,53 +1,24 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-import bcrypt
-from jose import jwt
-
-from app.config import get_settings
+from app.application.ports import PasswordHasher, TokenProvider
 from app.domain.errors import AuthException, codes
 from app.domain.models.user import User
 from app.domain.repositories.uow import UnitOfWork
 
-settings = get_settings()
-
 
 class AuthService:
-    def __init__(self, uow: UnitOfWork) -> None:
+    def __init__(
+        self,
+        uow: UnitOfWork,
+        hasher: PasswordHasher,
+        tokens: TokenProvider,
+    ) -> None:
         self.uow = uow
-
-    # --- Password ---
-
-    @staticmethod
-    def hash_password(password: str) -> str:
-        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-    @staticmethod
-    def verify_password(plain: str, hashed: str) -> bool:
-        return bcrypt.checkpw(plain.encode(), hashed.encode())
-
-    # --- Token ---
-
-    @staticmethod
-    def create_access_token(user_id: str) -> str:
-        expire = datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRE_HOURS)
-        return jwt.encode(
-            {"sub": user_id, "exp": expire},
-            settings.JWT_SECRET,
-            algorithm=settings.JWT_ALGORITHM,
-        )
-
-    @staticmethod
-    def decode_access_token(token: str) -> str | None:
-        try:
-            payload = jwt.decode(
-                token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
-            )
-            return payload.get("sub")
-        except Exception:
-            return None
+        self.hasher = hasher
+        self.tokens = tokens
 
     # --- Business operations ---
 
@@ -62,9 +33,9 @@ class AuthService:
 
     def _auth_result(self, user: User) -> dict:
         return {
-            "access_token": self.create_access_token(user.id),
+            "access_token": self.tokens.create(user.id),
             "token_type": "bearer",
-            "expires_in": settings.JWT_EXPIRE_HOURS * 3600,
+            "expires_in": self.tokens.ttl_seconds,
             "user": self._user_dict(user),
         }
 
@@ -78,7 +49,7 @@ class AuthService:
             id=str(uuid.uuid4()),
             username=username,
             email=email,
-            hashed_password=self.hash_password(password),
+            hashed_password=self.hasher.hash(password),
             role="user",
             created_at=datetime.now(timezone.utc),
         )
@@ -91,7 +62,7 @@ class AuthService:
         if not user:
             raise AuthException(codes.UNAUTHORIZED, "邮箱或密码错误")
 
-        if not self.verify_password(password, user.hashed_password):
+        if not self.hasher.verify(password, user.hashed_password):
             raise AuthException(codes.UNAUTHORIZED, "邮箱或密码错误")
 
         return self._auth_result(user)
@@ -110,5 +81,5 @@ class AuthService:
 
     async def ensure_admin(self, user_id: str) -> None:
         user = await self.uow.users.find_by_id(user_id)
-        if not user or user.role != "admin":
+        if not user or not user.is_admin:
             raise AuthException(codes.FORBIDDEN, "无权限")

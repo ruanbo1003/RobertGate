@@ -3,25 +3,25 @@ from __future__ import annotations
 import random
 
 from app.domain.errors import ParamException, codes
-from app.infrastructure.data.english_data import ENGLISH_THEMES, get_theme
 
 
 class EnglishService:
+    def __init__(self, themes: list[dict]) -> None:
+        self._themes = themes
+
     def list_themes(self) -> dict:
         # 直接返回预定义元数据
-        return {"themes": ENGLISH_THEMES}
+        return {"themes": self._themes}
 
     def generate_quiz(self, theme_id: str, count: int = 10) -> dict:
-        theme = get_theme(theme_id)
+        theme = next((t for t in self._themes if t["id"] == theme_id), None)
         if not theme:
             raise ParamException(codes.ENGLISH_THEME_NOT_FOUND, "theme_id 不存在")
         if not theme["ready"]:
             raise ParamException(codes.ENGLISH_THEME_NOT_READY, "主题尚未准备完毕")
 
         # 收集所有主题的图片作为潜在干扰项
-        all_images = [
-            w["image_url"] for t in ENGLISH_THEMES for w in t["words"]
-        ]
+        all_images = [w["image_url"] for t in self._themes for w in t["words"]]
 
         rng = random.Random()
         theme_words = theme["words"]
