@@ -5,7 +5,6 @@ import pytest
 
 from app.core.exceptions import ParamException
 from app.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.service import t2i_task_service as tts
 from app.service.t2i_task_service import (
     T2ITaskService,
     _build_prompt,
@@ -14,12 +13,14 @@ from app.service.t2i_task_service import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _stub_run_generation(monkeypatch):
-    async def _noop(*args, **kwargs):
-        return None
+class FakeGenerator:
+    """记录 spawn 调用，不真正跑后台生成——隔离 T2IGenerator 的实现细节。"""
 
-    monkeypatch.setattr(tts, "_run_generation", _noop)
+    def __init__(self):
+        self.calls: list[tuple[str, str, str]] = []
+
+    def spawn(self, task_id: str, image_id: str, prompt: str) -> None:
+        self.calls.append((task_id, image_id, prompt))
 
 
 @pytest.fixture
@@ -48,13 +49,19 @@ def ai():
 
 
 @pytest.fixture
-def service(template_repo, task_repo, image_repo, blob_repo, ai):
+def generator():
+    return FakeGenerator()
+
+
+@pytest.fixture
+def service(template_repo, task_repo, image_repo, blob_repo, ai, generator):
     return T2ITaskService(
         template_repo=template_repo,
         task_repo=task_repo,
         image_repo=image_repo,
         blob_repo=blob_repo,
         ai=ai,
+        generator=generator,
     )
 
 
@@ -366,7 +373,9 @@ async def test_create_task_unknown_template(service, template_repo):
 
 
 @pytest.mark.asyncio
-async def test_create_task_idempotent(service, template_repo, task_repo, image_repo):
+async def test_create_task_idempotent(
+    service, template_repo, task_repo, image_repo, generator
+):
     template_repo.find_by_code.return_value = _template()
     existing = _task()
     task_repo.find_by_hash.return_value = existing
@@ -377,10 +386,13 @@ async def test_create_task_idempotent(service, template_repo, task_repo, image_r
     assert out["existing"] is True
     assert out["task"]["id"] == existing.id
     task_repo.save.assert_not_called()
+    assert generator.calls == []  # 命中已有任务不重新排队生成
 
 
 @pytest.mark.asyncio
-async def test_create_task_new(service, template_repo, task_repo, image_repo):
+async def test_create_task_new(
+    service, template_repo, task_repo, image_repo, generator
+):
     template_repo.find_by_code.return_value = _template()
     task_repo.find_by_hash.return_value = None
 
@@ -388,8 +400,15 @@ async def test_create_task_new(service, template_repo, task_repo, image_repo):
 
     assert out["existing"] is False
     assert out["task"]["keywords"] == {"item": "Apple"}
+    assert out["task"]["status"] == "generating"
     task_repo.save.assert_awaited_once()
     image_repo.save.assert_awaited_once()
+
+    # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
+    assert len(generator.calls) == 1
+    spawned_task_id, spawned_image_id, spawned_prompt = generator.calls[0]
+    assert spawned_task_id == out["task"]["id"]
+    assert spawned_prompt == "cute Apple illustration"
 
 
 # ---------- get_task ----------
@@ -454,7 +473,7 @@ async def test_retry_task_template_deleted(
 
 @pytest.mark.asyncio
 async def test_retry_task_success(
-    service, task_repo, image_repo, template_repo
+    service, task_repo, image_repo, template_repo, generator
 ):
     task_repo.find_by_id.return_value = _task()
     image_repo.has_generating.return_value = False
@@ -464,6 +483,11 @@ async def test_retry_task_success(
     assert out["image"]["status"] == "generating"
     image_repo.save.assert_awaited_once()
     task_repo.update.assert_awaited_once()
+
+    assert len(generator.calls) == 1
+    spawned_task_id, spawned_image_id, _ = generator.calls[0]
+    assert spawned_task_id == "t1"
+    assert spawned_image_id == out["image"]["id"]
 
 
 # ---------- patch_image ----------

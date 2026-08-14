@@ -4,9 +4,10 @@ from pathlib import Path
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import async_session, get_db
 from app.core.exceptions import AuthException
 from app.core.setting import get_settings
+from app.core.tasks import AsyncioTaskRunner
 from app.repository.hanzi_character_repo import HanziCharacterRepo
 from app.repository.hanzi_level_repo import HanziLevelRepo
 from app.repository.hanzi_progress_repo import HanziProgressRepo
@@ -23,6 +24,7 @@ from app.service.auth_service import AuthService
 from app.service.english_service import EnglishService
 from app.service.gallery_service import GalleryService
 from app.service.hanzi_service import HanziService
+from app.service.t2i_generation import T2IGenerator, fetch_image_bytes
 from app.service.t2i_service import T2IService
 from app.service.t2i_task_service import T2ITaskService
 from app.service.translate_service import TranslateService
@@ -109,14 +111,26 @@ def get_gallery_service() -> GalleryService:
     )
 
 
+@lru_cache
+def get_task_runner() -> AsyncioTaskRunner:
+    return AsyncioTaskRunner()
+
+
 async def get_t2i_task_service(
     db: AsyncSession = Depends(get_db),
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> T2ITaskService:
+    generator = T2IGenerator(
+        session_factory=async_session,
+        ai=ai,
+        fetch_image=fetch_image_bytes,
+        runner=get_task_runner(),
+    )
     return T2ITaskService(
         template_repo=T2ITemplateRepo(db),
         task_repo=T2ITaskRepo(db),
         image_repo=T2IImageRepo(db),
         blob_repo=T2IImageBlobRepo(db),
         ai=ai,
+        generator=generator,
     )

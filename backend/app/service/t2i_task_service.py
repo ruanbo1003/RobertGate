@@ -6,20 +6,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
-import logging
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
-
-from app.core.database import async_session
 from app.core.exceptions import ParamException
-from app.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate
+from app.models.t2i import T2IImage, T2ITask, T2ITemplate
 from app.repository.t2i_repo import (
     T2IImageBlobRepo,
     T2IImageRepo,
@@ -27,8 +22,7 @@ from app.repository.t2i_repo import (
     T2ITemplateRepo,
 )
 from app.service.ai_client import AIClient
-
-logger = logging.getLogger(__name__)
+from app.service.t2i_generation import T2IGenerator
 
 
 ITEM_MAX_LENGTH = 100
@@ -120,73 +114,6 @@ def _image_dict(img: T2IImage) -> dict:
     }
 
 
-# ---------- Async image fetch ----------
-
-
-async def _fetch_image_bytes(url: str) -> tuple[bytes, str]:
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.content, resp.headers.get("content-type", "image/png")
-
-
-# ---------- Background generation ----------
-
-
-async def _run_generation(task_id: str, image_id: str, prompt: str, ai: AIClient) -> None:
-    try:
-        url = await ai.generate_image(prompt)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("generate_image failed for task=%s img=%s: %s", task_id, image_id, e)
-        await _mark_image_failed(task_id, image_id)
-        return
-
-    try:
-        payload, mime = await _fetch_image_bytes(url)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("download image bytes failed for task=%s: %s", task_id, e)
-        await _mark_image_failed(task_id, image_id)
-        return
-
-    async with async_session() as session:
-        image_repo = T2IImageRepo(session)
-        blob_repo = T2IImageBlobRepo(session)
-        task_repo = T2ITaskRepo(session)
-
-        img = await image_repo.find_by_id(image_id)
-        if img is None:
-            return
-        img.status = "succeeded"
-        img.mime = mime
-        blob = T2IImageBlob(image_id=image_id, bytes_=payload)
-        await blob_repo.save(blob)
-        await image_repo.update(img)
-
-        task = await task_repo.find_by_id(task_id)
-        if task is not None:
-            task.status = "succeeded"
-            task.last_failed = False
-            task.updated_at = datetime.now(timezone.utc)
-            await task_repo.update(task)
-
-
-async def _mark_image_failed(task_id: str, image_id: str) -> None:
-    async with async_session() as session:
-        image_repo = T2IImageRepo(session)
-        task_repo = T2ITaskRepo(session)
-        img = await image_repo.find_by_id(image_id)
-        if img is None:
-            return
-        img.status = "failed"
-        await image_repo.update(img)
-        task = await task_repo.find_by_id(task_id)
-        if task is not None:
-            task.status = "failed"
-            task.last_failed = True
-            task.updated_at = datetime.now(timezone.utc)
-            await task_repo.update(task)
-
-
 # ---------- Service ----------
 
 
@@ -198,12 +125,14 @@ class T2ITaskService:
         image_repo: T2IImageRepo,
         blob_repo: T2IImageBlobRepo,
         ai: AIClient,
+        generator: T2IGenerator,
     ) -> None:
         self.template_repo = template_repo
         self.task_repo = task_repo
         self.image_repo = image_repo
         self.blob_repo = blob_repo
         self.ai = ai
+        self.generator = generator
 
     # ---- Templates ----
 
@@ -371,7 +300,7 @@ class T2ITaskService:
         await self.image_repo.save(image)
 
         prompt = _build_prompt(tpl.prompt, keywords)
-        asyncio.create_task(_run_generation(task.id, image.id, prompt, self.ai))
+        self.generator.spawn(task.id, image.id, prompt)
 
         return {"existing": False, "task": _task_summary_dict(task, [image])}
 
@@ -414,7 +343,7 @@ class T2ITaskService:
         await self.task_repo.update(task)
 
         prompt = _build_prompt(tpl.prompt, task.keywords)
-        asyncio.create_task(_run_generation(task_id, image.id, prompt, self.ai))
+        self.generator.spawn(task_id, image.id, prompt)
 
         return {"image": _image_dict(image)}
 
