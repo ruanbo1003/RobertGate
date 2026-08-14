@@ -15,21 +15,6 @@ class HanziProgressRepo(SqlRepo[HanziUserProgress]):
             )
         )
 
-    async def learned_ids_by_level(self, user_id: str, level_id: str) -> set[str]:
-        """当前用户在指定 level 下已学的 character_id 集合。"""
-        result = await self.session.execute(
-            select(HanziUserProgress.character_id)
-            .join(
-                HanziCharacter,
-                HanziCharacter.id == HanziUserProgress.character_id,
-            )
-            .where(
-                HanziUserProgress.user_id == user_id,
-                HanziCharacter.level_id == level_id,
-            )
-        )
-        return {cid for cid in result.scalars().all()}
-
     async def progress_map_by_level(
         self, user_id: str, level_id: str
     ) -> dict[str, HanziUserProgress]:

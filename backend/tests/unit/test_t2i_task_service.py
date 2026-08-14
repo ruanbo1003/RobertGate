@@ -482,17 +482,19 @@ async def test_patch_image_flip(service, uow, task_repo, image_repo):
     img = _image(status="succeeded", available=False)
     image_repo.find_by_id.return_value = img
     task_repo.find_by_id.return_value = _task()
-    image_repo.list_by_task.return_value = [
-        _image("i1", status="succeeded", available=True),
-    ]
+    siblings = [_image("i1", status="succeeded", available=True)]
+    # 回读 siblings 也记进事件日志，这样顺序断言才真的能证明"先提交再查"，
+    # 而不只是证明两件事都发生过。
+    image_repo.list_by_task.side_effect = (
+        lambda _task_id: uow.calls.append("t2i_images.list_by_task") or siblings
+    )
 
     out = await service.patch_image("i1", True)
     assert img.available is True
     assert out["task_business_status"] == "done"
-    # 原实现在这里连续 commit 两次；合并为一次（原子性修复，对外行为不变）
-    assert uow.calls == ["commit"]
-    # 且 commit 必须早于回读 siblings（原实现也是先提交再查）
-    assert uow.commit.await_args_list  # 已 await
+    # 原实现在这里连续 commit 两次；合并为一次（原子性修复，对外行为不变）。
+    # 且 commit 必须早于回读 siblings（原实现也是先提交再查）——逐位锁死。
+    assert uow.calls == ["commit", "t2i_images.list_by_task"]
     image_repo.list_by_task.assert_awaited_once()
 
 

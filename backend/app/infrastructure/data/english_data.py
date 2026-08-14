@@ -80,6 +80,3 @@ ENGLISH_THEMES: list[ThemeItem] = [
     },
 ]
 
-
-def get_theme(theme_id: str) -> ThemeItem | None:
-    return next((t for t in ENGLISH_THEMES if t["id"] == theme_id), None)
