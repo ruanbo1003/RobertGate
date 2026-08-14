@@ -1,8 +1,12 @@
+from functools import lru_cache
+from pathlib import Path
+
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.exceptions import AuthException
+from app.core.setting import get_settings
 from app.repository.hanzi_character_repo import HanziCharacterRepo
 from app.repository.hanzi_level_repo import HanziLevelRepo
 from app.repository.hanzi_progress_repo import HanziProgressRepo
@@ -17,6 +21,7 @@ from app.service.admin_hanzi_service import AdminHanziService
 from app.service.ai_client import AIClient, get_ai_client
 from app.service.auth_service import AuthService
 from app.service.english_service import EnglishService
+from app.service.gallery_service import GalleryService
 from app.service.hanzi_service import HanziService
 from app.service.t2i_service import T2IService
 from app.service.t2i_task_service import T2ITaskService
@@ -91,6 +96,17 @@ async def get_t2i_service(
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> T2IService:
     return T2IService(ai=ai)
+
+
+@lru_cache
+def get_gallery_service() -> GalleryService:
+    settings = get_settings()
+    photo_dir = Path(settings.PHOTO_DIR)
+    return GalleryService(
+        photo_dir=photo_dir,
+        thumb_dir=photo_dir / "thumbs",
+        thumb_width=settings.THUMB_WIDTH,
+    )
 
 
 async def get_t2i_task_service(

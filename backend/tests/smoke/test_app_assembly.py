@@ -16,18 +16,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-import app.api.gallery.router as gallery_router_module
 from app.api.dependencies import (
     get_admin_hanzi_service,
     get_auth_service,
     get_current_user_id,
     get_english_service,
+    get_gallery_service,
     get_hanzi_service,
     get_t2i_task_service,
     get_translate_service,
     require_admin,
 )
 from app.main import app
+from app.service.gallery_service import GalleryService
 
 client = TestClient(app)
 
@@ -154,15 +155,17 @@ def test_auth_router_smoke():
     assert response.json()["code"] == 0
 
 
-def test_gallery_router_smoke(monkeypatch):
-    # gallery 无 service，直接调真实 handler。把模块级 PHOTO_DIR 常量指向一个
-    # 保证不存在的路径，避免依赖本机照片目录的真实状态（可能存在、可能不存在），
-    # 同时避免测试意外在开发者本机目录里生成缩略图这种副作用。
-    monkeypatch.setattr(
-        gallery_router_module,
-        "PHOTO_DIR",
-        Path("/nonexistent/robertgate-smoke-test-photo-dir"),
+def test_gallery_router_smoke():
+    # 注入一个指向保证不存在路径的 GalleryService，避免依赖本机照片目录的
+    # 真实状态（可能存在、可能不存在），同时避免测试意外在开发者本机目录里
+    # 生成缩略图这种副作用。
+    fake_photo_dir = Path("/nonexistent/robertgate-smoke-test-photo-dir")
+    fake_service = GalleryService(
+        photo_dir=fake_photo_dir,
+        thumb_dir=fake_photo_dir / "thumbs",
+        thumb_width=400,
     )
+    app.dependency_overrides[get_gallery_service] = lambda: fake_service
 
     response = client.get("/api/v1/gallery/photos")
 
