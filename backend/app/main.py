@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
@@ -27,24 +27,35 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="RobertGate API", version="0.2.0", lifespan=lifespan)
+ROUTERS: list[tuple[APIRouter, str]] = [
+    (auth_router, "/api/v1"),
+    (gallery_router, "/api/v1"),
+    (ai_tools_router, "/api/v1"),
+    (t2i_router, "/api/v1"),
+    (hanzi_router, "/api/v1"),
+    (admin_hanzi_router, "/api/v1"),
+    (util_router, "/api"),
+]
 
-# Middleware (last added = first executed)
-app.add_middleware(ApiLoggingMiddleware)
-app.add_middleware(ErrorHandlerMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Routers
-app.include_router(auth_router, prefix="/api/v1")
-app.include_router(gallery_router, prefix="/api/v1")
-app.include_router(ai_tools_router, prefix="/api/v1")
-app.include_router(t2i_router, prefix="/api/v1")
-app.include_router(hanzi_router, prefix="/api/v1")
-app.include_router(admin_hanzi_router, prefix="/api/v1")
-app.include_router(util_router, prefix="/api")
+def create_app() -> FastAPI:
+    app = FastAPI(title="RobertGate API", version="0.2.0", lifespan=lifespan)
+
+    # Middleware (last added = first executed)
+    app.add_middleware(ApiLoggingMiddleware)
+    app.add_middleware(ErrorHandlerMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    for router, prefix in ROUTERS:
+        app.include_router(router, prefix=prefix)
+
+    return app
+
+
+app = create_app()
