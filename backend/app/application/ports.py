@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Coroutine
+from typing import Any, Protocol
 
 
 class AIClient(Protocol):
@@ -50,3 +51,7 @@ class TokenProvider(Protocol):
     def ttl_seconds(self) -> int:
         """令牌有效期（秒），用于 login/register 的 expires_in。"""
         ...
+
+
+class TaskRunner(Protocol):
+    def spawn(self, coro: Coroutine[Any, Any, Any]) -> None: ...

@@ -16,7 +16,7 @@ from app.application.services.auth_service import AuthService
 from app.application.services.english_service import EnglishService
 from app.application.services.gallery_service import GalleryService
 from app.application.services.hanzi_service import HanziService
-from app.application.services.t2i_generation import T2IGenerator, fetch_image_bytes
+from app.application.services.t2i_generation import T2IGenerator
 from app.application.services.t2i_service import T2IService
 from app.application.services.t2i_task_service import T2ITaskService
 from app.application.services.translate_service import TranslateService
@@ -24,6 +24,7 @@ from app.config import get_settings
 from app.domain.errors import AuthException, codes
 from app.domain.repositories.uow import UnitOfWork
 from app.infrastructure.ai.factory import get_ai_client
+from app.infrastructure.ai.image_fetch import fetch_image_bytes
 from app.infrastructure.data.english_data import ENGLISH_THEMES
 from app.infrastructure.database.session import get_db
 from app.infrastructure.repositories.uow import SqlUnitOfWork, new_uow

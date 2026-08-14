@@ -39,6 +39,8 @@ class codes:
     FORBIDDEN = 1002               # 无权限
 
     # ---------- 2000-2999 参数 ----------
+    PARAM_INVALID = 2000           # 中间件兜底通用码：ValueError 未细分错误码时的兜底
+
     ENGLISH_THEME_NOT_FOUND = 2008
     ENGLISH_THEME_NOT_READY = 2009
 
@@ -69,6 +71,7 @@ class codes:
     # ---------- 5000-5999 服务端 ----------
     # 注意：AI_GENERATE_FAILED 历史上走的是 ParamException（练习文本生成），
     # 数值虽在 5xxx 段，异常类型不能改。
+    INTERNAL_ERROR = 5000          # 中间件兜底通用码：未捕获异常的兜底
     AI_GENERATE_FAILED = 5000
     AI_UNAVAILABLE = 5001
     PHOTO_DIR_NOT_FOUND = 5001     # 与 AI_UNAVAILABLE 撞号（历史遗留）

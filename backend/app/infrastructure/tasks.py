@@ -1,20 +1,17 @@
-"""后台任务运行器：包一层 asyncio.create_task，防 GC + 记录异常。
-
-放 core 是临时的，Phase 3 会搬去 infrastructure；本阶段位置不重要，行为对。
-"""
+"""后台任务运行器：包一层 asyncio.create_task，防 GC + 记录异常。"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Coroutine
-from typing import Any, Protocol
+from typing import Any
+
+from app.application.ports import TaskRunner
 
 logger = logging.getLogger(__name__)
 
-
-class TaskRunner(Protocol):
-    def spawn(self, coro: Coroutine[Any, Any, Any]) -> None: ...
+__all__ = ["TaskRunner", "AsyncioTaskRunner"]
 
 
 class AsyncioTaskRunner:

@@ -12,22 +12,12 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 
-import httpx
-
-from app.application.ports import AIClient
+from app.application.ports import AIClient, TaskRunner
 from app.domain.models.t2i import T2IImageBlob
-from app.infrastructure.tasks import TaskRunner
 
 logger = logging.getLogger(__name__)
 
 FetchImage = Callable[[str], Awaitable[tuple[bytes, str]]]
-
-
-async def fetch_image_bytes(url: str) -> tuple[bytes, str]:
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.content, resp.headers.get("content-type", "image/png")
 
 
 class T2IGenerator:

@@ -51,6 +51,8 @@ backend/
 - 仓储接口（Protocol）定义在 domain/repositories，实现在 infrastructure/repositories
 - 事务边界在 application service：通过 UnitOfWork，一个用例一次 commit
 - 错误码常量统一在 domain/errors.py 的 codes 里维护，不在各层散落硬编码数字
+- 豁免：GalleryService 为单实现文件 I/O service，直接依赖 PIL/文件系统属显式豁免；
+  出现第二种存储后端时再抽 PhotoStorage port
 
 ## 构建与运行
 ```bash
