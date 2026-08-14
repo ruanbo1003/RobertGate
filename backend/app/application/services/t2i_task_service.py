@@ -199,6 +199,10 @@ class T2ITaskService:
 
         task = T2ITask.create(template_code, keywords)
         self.uow.t2i_tasks.add(task)
+        # t2i_images.task_id 外键指向 t2i_tasks，而两个模型之间没有
+        # relationship()，同一次 flush 里 SQLAlchemy 不保证先插任务再插图片。
+        # 显式 flush 定序；事务不结束，两条写仍然原子。
+        await self.uow.flush()
 
         image = T2IImage.create(task.id)
         self.uow.t2i_images.add(image)

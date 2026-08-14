@@ -345,6 +345,8 @@ async def test_create_task_new(
     image_repo.add.assert_called_once()
     # 任务 + 图片同一事务，且必须在 spawn 之前提交（后台任务另开 session 按 id 重查）
     assert uow.commit.await_count == 1
+    # 外键定序：任务先落到 DB，图片才能插（两者之间没有 relationship）
+    assert uow.flush.await_count == 1
 
     # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
     assert len(generator.calls) == 1

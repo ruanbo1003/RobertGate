@@ -41,6 +41,12 @@ def test_all_uow_repos_present(uow):
 
 
 @pytest.mark.asyncio
+async def test_flush_delegates_to_session(uow, session):
+    await uow.flush()
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_commit_delegates_to_session(uow, session):
     await uow.commit()
     session.commit.assert_awaited_once()

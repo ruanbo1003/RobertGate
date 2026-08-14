@@ -34,6 +34,7 @@ class FakeUow:
     def __init__(self) -> None:
         for name in REPO_NAMES:
             setattr(self, name, make_repo())
+        self.flush = AsyncMock()
         self.commit = AsyncMock()
         self.rollback = AsyncMock()
 

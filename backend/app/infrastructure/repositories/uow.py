@@ -61,6 +61,9 @@ class SqlUnitOfWork:
     def t2i_blobs(self) -> T2IImageBlobRepo:
         return T2IImageBlobRepo(self.session)
 
+    async def flush(self) -> None:
+        await self.session.flush()
+
     async def commit(self) -> None:
         await self.session.commit()
 
