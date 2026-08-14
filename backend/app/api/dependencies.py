@@ -4,20 +4,20 @@ from pathlib import Path
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import async_session, get_db
 from app.core.exceptions import AuthException
 from app.core.setting import get_settings
 from app.core.tasks import AsyncioTaskRunner
-from app.repository.hanzi_character_repo import HanziCharacterRepo
-from app.repository.hanzi_level_repo import HanziLevelRepo
-from app.repository.hanzi_progress_repo import HanziProgressRepo
-from app.repository.t2i_repo import (
+from app.infrastructure.database.session import async_session, get_db
+from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
+from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
+from app.infrastructure.repositories.hanzi_progress_repo import HanziProgressRepo
+from app.infrastructure.repositories.t2i_repo import (
     T2IImageBlobRepo,
     T2IImageRepo,
     T2ITaskRepo,
     T2ITemplateRepo,
 )
-from app.repository.user_repo import UserRepo
+from app.infrastructure.repositories.user_repo import UserRepo
 from app.service.admin_hanzi_service import AdminHanziService
 from app.service.ai_client import AIClient, get_ai_client
 from app.service.auth_service import AuthService

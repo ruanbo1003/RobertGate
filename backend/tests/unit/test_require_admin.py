@@ -5,7 +5,7 @@ import pytest
 
 from app.api.dependencies import require_admin
 from app.core.exceptions import AuthException
-from app.models.user import User
+from app.domain.models.user import User
 from app.service.auth_service import AuthService
 
 

@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core.db_init import run_migrations, wait_for_db
+from app.infrastructure.database.migrate import run_migrations, wait_for_db
 from app.core.logger import setup_logging
 from app.core.middleware import ApiLoggingMiddleware, ErrorHandlerMiddleware
 from app.core.setting import get_settings

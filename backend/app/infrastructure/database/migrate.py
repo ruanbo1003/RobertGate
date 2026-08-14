@@ -6,13 +6,14 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 
-from app.core.database import engine
+from app.infrastructure.database.session import engine
 
 logger = logging.getLogger(__name__)
 
 # backend/ 目录（alembic.ini 所在）
-_BACKEND_DIR = Path(__file__).resolve().parents[2]
+_BACKEND_DIR = Path(__file__).resolve().parents[3]
 _ALEMBIC_INI = _BACKEND_DIR / "alembic.ini"
+assert _ALEMBIC_INI.exists(), f"alembic.ini not found: {_ALEMBIC_INI}"
 
 
 async def wait_for_db(retries: int = 30, delay: float = 1.0) -> None:

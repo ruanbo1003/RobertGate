@@ -1,7 +1,7 @@
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.hanzi_character import HanziCharacter
+from app.domain.models.hanzi import HanziCharacter
 
 
 class HanziCharacterRepo:

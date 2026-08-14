@@ -14,10 +14,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.core.database import async_session
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.models.user import User
+from app.domain.models.hanzi import HanziCharacter, HanziLevel
+from app.domain.models.user import User
+from app.infrastructure.database.session import async_session
 from app.service.auth_service import AuthService
 
 ADMIN_USERNAME = "admin"

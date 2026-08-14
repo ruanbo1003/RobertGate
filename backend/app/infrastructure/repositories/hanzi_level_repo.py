@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.hanzi_level import HanziLevel
+from app.domain.models.hanzi import HanziLevel
 
 
 class HanziLevelRepo:

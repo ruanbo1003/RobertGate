@@ -8,8 +8,8 @@ from jose import jwt
 
 from app.core.exceptions import AuthException
 from app.core.setting import get_settings
-from app.models.user import User
-from app.repository.user_repo import UserRepo
+from app.domain.models.user import User
+from app.infrastructure.repositories.user_repo import UserRepo
 
 settings = get_settings()
 

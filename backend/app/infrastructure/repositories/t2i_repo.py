@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate
+from app.domain.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate
 
 
 class T2ITemplateRepo:

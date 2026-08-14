@@ -14,8 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.exceptions import ParamException
-from app.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.repository.t2i_repo import (
+from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
+from app.infrastructure.repositories.t2i_repo import (
     T2IImageBlobRepo,
     T2IImageRepo,
     T2ITaskRepo,

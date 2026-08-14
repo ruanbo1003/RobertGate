@@ -6,10 +6,9 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.exceptions import ParamException
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.repository.hanzi_character_repo import HanziCharacterRepo
-from app.repository.hanzi_level_repo import HanziLevelRepo
+from app.domain.models.hanzi import HanziCharacter, HanziLevel
+from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
+from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
 from app.service.ai_client import AIClient
 
 HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")

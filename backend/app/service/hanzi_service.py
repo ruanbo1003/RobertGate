@@ -4,10 +4,10 @@ import uuid
 from datetime import datetime, timezone
 
 from app.core.exceptions import ParamException
-from app.models.hanzi_progress import HanziUserProgress
-from app.repository.hanzi_character_repo import HanziCharacterRepo
-from app.repository.hanzi_level_repo import HanziLevelRepo
-from app.repository.hanzi_progress_repo import HanziProgressRepo
+from app.domain.models.hanzi import HanziUserProgress
+from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
+from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
+from app.infrastructure.repositories.hanzi_progress_repo import HanziProgressRepo
 from app.service.ai_client import AIClient
 
 

@@ -1,8 +1,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_progress import HanziUserProgress
+from app.domain.models.hanzi import HanziCharacter, HanziUserProgress
 
 
 class HanziProgressRepo:

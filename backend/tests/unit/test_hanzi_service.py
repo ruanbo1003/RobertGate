@@ -4,9 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.core.exceptions import ParamException
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.models.hanzi_progress import HanziUserProgress
+from app.domain.models.hanzi import HanziCharacter, HanziLevel, HanziUserProgress
 from app.service.hanzi_service import HanziService
 
 

@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.database import Base
+from app.domain.models.base import Base
 from app.core.setting import get_settings
 
 settings = get_settings()
