@@ -11,9 +11,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.application.services import t2i_generation as gen
+from app.application.services.t2i_generation import T2IGenerator
 from app.domain.models.t2i import T2IImage, T2ITask
-from app.service import t2i_generation as gen
-from app.service.t2i_generation import T2IGenerator
 
 
 class InlineRunner:

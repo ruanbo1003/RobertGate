@@ -3,18 +3,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.config import get_settings
 from app.infrastructure.database.migrate import run_migrations, wait_for_db
-from app.core.logger import setup_logging
-from app.core.middleware import ApiLoggingMiddleware, ErrorHandlerMiddleware
-from app.core.setting import get_settings
+from app.infrastructure.logging import setup_logging
+from app.interfaces.api.middleware import ApiLoggingMiddleware, ErrorHandlerMiddleware
 
-from app.api.admin.hanzi_router import router as admin_hanzi_router
-from app.api.ai_tools.router import router as ai_tools_router
-from app.api.ai_tools.t2i_router import router as t2i_router
-from app.api.auth.router import router as auth_router
-from app.api.gallery.router import router as gallery_router
-from app.api.hanzi.router import router as hanzi_router
-from app.api.util.router import router as util_router
+from app.interfaces.api.routers.admin_hanzi import router as admin_hanzi_router
+from app.interfaces.api.routers.ai_tools import router as ai_tools_router
+from app.interfaces.api.routers.t2i import router as t2i_router
+from app.interfaces.api.routers.auth import router as auth_router
+from app.interfaces.api.routers.gallery import router as gallery_router
+from app.interfaces.api.routers.hanzi import router as hanzi_router
+from app.interfaces.api.routers.util import router as util_router
 
 settings = get_settings()
 

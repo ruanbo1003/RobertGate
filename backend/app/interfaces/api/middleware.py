@@ -5,8 +5,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from app.core.exceptions import AppException
-from app.core.response import ApiResponse
+from app.domain.errors import AppException
+from app.interfaces.api.response import ApiResponse
 
 access_logger = logging.getLogger("app.access")
 error_logger = logging.getLogger("app.error")

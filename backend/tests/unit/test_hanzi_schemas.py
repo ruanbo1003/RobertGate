@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.hanzi import (
+from app.interfaces.api.schemas.hanzi import (
     AiAddRequest,
     CharacterCreateRequest,
     CharacterUpdateRequest,

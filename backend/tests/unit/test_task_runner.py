@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from app.core.tasks import AsyncioTaskRunner
+from app.infrastructure.tasks import AsyncioTaskRunner
 
 
 @pytest.mark.asyncio

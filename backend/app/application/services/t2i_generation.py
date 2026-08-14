@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import httpx
 
-from app.core.tasks import TaskRunner
+from app.application.ports import AIClient
 from app.domain.models.t2i import T2IImageBlob
 from app.infrastructure.repositories.t2i_repo import T2IImageBlobRepo, T2IImageRepo, T2ITaskRepo
-from app.service.ai_client import AIClient
+from app.infrastructure.tasks import TaskRunner
 
 logger = logging.getLogger(__name__)
 

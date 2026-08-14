@@ -16,8 +16,8 @@ from sqlalchemy import select
 
 from app.domain.models.hanzi import HanziCharacter, HanziLevel
 from app.domain.models.user import User
+from app.application.services.auth_service import AuthService
 from app.infrastructure.database.session import async_session
-from app.service.auth_service import AuthService
 
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "admin@example.com"

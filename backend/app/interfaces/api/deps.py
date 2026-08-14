@@ -4,9 +4,19 @@ from pathlib import Path
 from fastapi import Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthException
-from app.core.setting import get_settings
-from app.core.tasks import AsyncioTaskRunner
+from app.application.ports import AIClient
+from app.application.services.admin_hanzi_service import AdminHanziService
+from app.application.services.auth_service import AuthService
+from app.application.services.english_service import EnglishService
+from app.application.services.gallery_service import GalleryService
+from app.application.services.hanzi_service import HanziService
+from app.application.services.t2i_generation import T2IGenerator, fetch_image_bytes
+from app.application.services.t2i_service import T2IService
+from app.application.services.t2i_task_service import T2ITaskService
+from app.application.services.translate_service import TranslateService
+from app.config import get_settings
+from app.domain.errors import AuthException
+from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.database.session import async_session, get_db
 from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
 from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
@@ -18,16 +28,7 @@ from app.infrastructure.repositories.t2i_repo import (
     T2ITemplateRepo,
 )
 from app.infrastructure.repositories.user_repo import UserRepo
-from app.service.admin_hanzi_service import AdminHanziService
-from app.service.ai_client import AIClient, get_ai_client
-from app.service.auth_service import AuthService
-from app.service.english_service import EnglishService
-from app.service.gallery_service import GalleryService
-from app.service.hanzi_service import HanziService
-from app.service.t2i_generation import T2IGenerator, fetch_image_bytes
-from app.service.t2i_service import T2IService
-from app.service.t2i_task_service import T2ITaskService
-from app.service.translate_service import TranslateService
+from app.infrastructure.tasks import AsyncioTaskRunner
 
 
 async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:

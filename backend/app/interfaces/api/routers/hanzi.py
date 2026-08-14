@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import (
+from app.application.services.hanzi_service import HanziService
+from app.interfaces.api.deps import (
     get_current_user_id,
     get_hanzi_service,
 )
-from app.core.response import success
-from app.schemas.hanzi import PracticeTextRequest, UpdateProgressRequest
-from app.service.hanzi_service import HanziService
+from app.interfaces.api.response import success
+from app.interfaces.api.schemas.hanzi import PracticeTextRequest, UpdateProgressRequest
 
 router = APIRouter(prefix="/hanzi", tags=["hanzi"])
 

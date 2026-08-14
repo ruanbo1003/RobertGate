@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.core.setting import get_settings
+from app.config import get_settings
 from app.domain.models.base import Base
 
 # Import all models so Alembic sees them

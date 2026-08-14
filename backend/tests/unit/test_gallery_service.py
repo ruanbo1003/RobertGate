@@ -4,9 +4,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app.core.exceptions import ServerException
-from app.service.gallery_service import GalleryService
-import app.service.gallery_service as gallery_service_module
+from app.domain.errors import ServerException
+from app.application.services.gallery_service import GalleryService
+import app.application.services.gallery_service as gallery_service_module
 
 
 def _create_test_image(directory: Path, name: str, width: int, height: int) -> None:

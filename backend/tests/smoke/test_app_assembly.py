@@ -16,7 +16,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import (
+from app.application.services.gallery_service import GalleryService
+from app.interfaces.api.deps import (
     get_admin_hanzi_service,
     get_auth_service,
     get_current_user_id,
@@ -28,7 +29,6 @@ from app.api.dependencies import (
     require_admin,
 )
 from app.main import app
-from app.service.gallery_service import GalleryService
 
 client = TestClient(app)
 

@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 
-from app.api.dependencies import get_t2i_task_service, require_admin
-from app.core.response import success
-from app.schemas.t2i import (
+from app.application.services.t2i_task_service import T2ITaskService
+from app.interfaces.api.deps import get_t2i_task_service, require_admin
+from app.interfaces.api.response import success
+from app.interfaces.api.schemas.t2i import (
     CreateTemplateRequest,
     PatchImageRequest,
     UpdateTemplateRequest,
 )
-from app.service.t2i_task_service import T2ITaskService
 
 router = APIRouter(prefix="/ai/t2i", tags=["ai-t2i"])
 

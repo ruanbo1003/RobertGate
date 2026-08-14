@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException
+from app.application.services.admin_hanzi_service import AdminHanziService, _extract_chars
+from app.domain.errors import ParamException
 from app.domain.models.hanzi import HanziCharacter, HanziLevel
-from app.service.admin_hanzi_service import AdminHanziService, _extract_chars
 
 
 @pytest.fixture

@@ -16,7 +16,7 @@ from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
-from app.service.ai_client import MockAIClient, _is_chinese
+from app.infrastructure.ai.mock_client import MockAIClient, _is_chinese
 
 logger = logging.getLogger(__name__)
 

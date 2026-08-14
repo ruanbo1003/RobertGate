@@ -1,5 +1,5 @@
-from app.core.exceptions import ServerException
-from app.service.ai_client import AIClient
+from app.application.ports import AIClient
+from app.domain.errors import ServerException
 
 
 class TranslateService:

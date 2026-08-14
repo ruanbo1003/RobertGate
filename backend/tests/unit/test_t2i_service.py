@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ServerException
-from app.service.t2i_service import T2IService
+from app.application.services.t2i_service import T2IService
+from app.domain.errors import ServerException
 
 
 @pytest.fixture

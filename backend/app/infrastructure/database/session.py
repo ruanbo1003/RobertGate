@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.core.setting import get_settings
+from app.config import get_settings
 from app.domain.models.base import Base
 
 settings = get_settings()

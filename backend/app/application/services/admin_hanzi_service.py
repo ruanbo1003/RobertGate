@@ -5,11 +5,11 @@ import re
 import uuid
 from datetime import datetime, timezone
 
-from app.core.exceptions import ParamException
+from app.application.ports import AIClient
+from app.domain.errors import ParamException
 from app.domain.models.hanzi import HanziCharacter, HanziLevel
 from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
 from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
-from app.service.ai_client import AIClient
 
 HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")
 HANZI_EXTRACT_RE = re.compile(r"[\u4e00-\u9fa5]")

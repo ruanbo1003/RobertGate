@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from app.core.exceptions import ServerException
+from app.domain.errors import ServerException
 
 logger = logging.getLogger(__name__)
 

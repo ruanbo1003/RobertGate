@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_gallery_service
-from app.core.response import success
-from app.service.gallery_service import GalleryService
+from app.application.services.gallery_service import GalleryService
+from app.interfaces.api.deps import get_gallery_service
+from app.interfaces.api.response import success
 
 router = APIRouter(prefix="/gallery", tags=["gallery"])
 

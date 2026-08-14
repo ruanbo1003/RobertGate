@@ -1,19 +1,19 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import (
+from app.application.services.english_service import EnglishService
+from app.application.services.t2i_service import T2IService
+from app.application.services.translate_service import TranslateService
+from app.interfaces.api.deps import (
     get_english_service,
     get_t2i_service,
     get_translate_service,
 )
-from app.core.response import success
-from app.schemas.ai_tools import (
+from app.interfaces.api.response import success
+from app.interfaces.api.schemas.ai_tools import (
     QuizRequest,
     Text2ImageRequest,
     TextRequest,
 )
-from app.service.english_service import EnglishService
-from app.service.t2i_service import T2IService
-from app.service.translate_service import TranslateService
 
 router = APIRouter(tags=["ai-tools"])
 

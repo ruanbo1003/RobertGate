@@ -3,10 +3,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.api.dependencies import require_admin
-from app.core.exceptions import AuthException
+from app.application.services.auth_service import AuthService
+from app.domain.errors import AuthException
 from app.domain.models.user import User
-from app.service.auth_service import AuthService
+from app.interfaces.api.deps import require_admin
 
 
 def _user(role: str = "user") -> User:

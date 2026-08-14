@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends
 
-from app.api.dependencies import get_admin_hanzi_service, require_admin
-from app.core.response import success
-from app.schemas.hanzi import (
+from app.application.services.admin_hanzi_service import AdminHanziService
+from app.interfaces.api.deps import get_admin_hanzi_service, require_admin
+from app.interfaces.api.response import success
+from app.interfaces.api.schemas.hanzi import (
     AiAddRequest,
     CharacterCreateRequest,
     CharacterUpdateRequest,
     LevelCreateRequest,
     LevelUpdateRequest,
 )
-from app.service.admin_hanzi_service import AdminHanziService
 
 router = APIRouter(prefix="/admin/hanzi", tags=["admin-hanzi"])
 

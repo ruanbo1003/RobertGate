@@ -13,7 +13,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from app.core.exceptions import ParamException
+from app.application.ports import AIClient
+from app.application.services.t2i_generation import T2IGenerator
+from app.domain.errors import ParamException
 from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
 from app.infrastructure.repositories.t2i_repo import (
     T2IImageBlobRepo,
@@ -21,8 +23,6 @@ from app.infrastructure.repositories.t2i_repo import (
     T2ITaskRepo,
     T2ITemplateRepo,
 )
-from app.service.ai_client import AIClient
-from app.service.t2i_generation import T2IGenerator
 
 
 ITEM_MAX_LENGTH = 100

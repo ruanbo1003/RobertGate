@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException
+from app.domain.errors import ParamException
 from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.service.t2i_task_service import (
+from app.application.services.t2i_task_service import (
     T2ITaskService,
     _build_prompt,
     _canonical_hash,

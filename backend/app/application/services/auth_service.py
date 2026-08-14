@@ -6,8 +6,8 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 from jose import jwt
 
-from app.core.exceptions import AuthException
-from app.core.setting import get_settings
+from app.config import get_settings
+from app.domain.errors import AuthException
 from app.domain.models.user import User
 from app.infrastructure.repositories.user_repo import UserRepo
 

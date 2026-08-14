@@ -3,12 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from app.core.exceptions import ParamException
+from app.application.ports import AIClient
+from app.domain.errors import ParamException
 from app.domain.models.hanzi import HanziUserProgress
 from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
 from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
 from app.infrastructure.repositories.hanzi_progress_repo import HanziProgressRepo
-from app.service.ai_client import AIClient
 
 
 def _iso(dt: datetime | None) -> str | None:

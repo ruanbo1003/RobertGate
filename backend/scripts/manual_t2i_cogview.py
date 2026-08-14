@@ -23,8 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 os.environ.setdefault("ENV", "local")
 
-from app.core.setting import get_settings  # noqa: E402
-from app.service.llm_client import LLMClient  # noqa: E402
+from app.config import get_settings  # noqa: E402
+from app.infrastructure.ai.llm_client import LLMClient  # noqa: E402
 
 IMAGES_DIR = Path(__file__).resolve().parent / "images"
 

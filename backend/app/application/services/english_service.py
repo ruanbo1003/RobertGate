@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import random
 
-from app.core.exceptions import ParamException
-from app.data.english_data import ENGLISH_THEMES, get_theme
+from app.domain.errors import ParamException
+from app.infrastructure.data.english_data import ENGLISH_THEMES, get_theme
 
 
 class EnglishService:

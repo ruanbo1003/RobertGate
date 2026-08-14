@@ -1,7 +1,7 @@
 import pytest
 
-from app.core.exceptions import ParamException
-from app.service.english_service import EnglishService
+from app.application.services.english_service import EnglishService
+from app.domain.errors import ParamException
 
 
 @pytest.fixture
