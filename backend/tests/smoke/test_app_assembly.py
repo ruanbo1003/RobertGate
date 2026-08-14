@@ -10,12 +10,16 @@ run_migrations，因此这里不需要真实数据库。
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.application.dto.auth import AuthResult, UserOut
+from app.application.dto.hanzi import LevelForUser
+from app.application.dto.t2i import TemplateOut
 from app.application.services.gallery_service import GalleryService
 from app.interfaces.api.deps import (
     get_admin_hanzi_service,
@@ -237,3 +241,124 @@ def test_admin_hanzi_router_smoke():
 
 
 # util router（/api/health）已在 test_health_check_returns_envelope 中覆盖。
+
+
+# ---------------------------------------------------------------------------
+# d) 响应 JSON 字段级断言
+#
+# 上面的 c) 只看 code == 0，service 换成 DTO 出参后照样绿。这里注入带
+# datetime 的真实 DTO，逐个端点锁字段集合，并盯死时间字符串的后缀是
+# `+00:00`（Python isoformat 风格）而不是 `Z`（Pydantic 默认风格）。
+# 格式本身的正反对照见 tests/unit/test_dto_datetime_format.py。
+# ---------------------------------------------------------------------------
+
+FIXED_DT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+FIXED_DT_ISO = "2024-01-02T03:04:05+00:00"
+
+
+def test_login_response_field_shape():
+    mock_service = AsyncMock()
+    mock_service.login.return_value = AuthResult(
+        access_token="jwt-token",
+        token_type="bearer",
+        expires_in=604800,
+        user=UserOut(
+            id="u1",
+            username="robert",
+            email="robert@example.com",
+            role="admin",
+            created_at=FIXED_DT,
+        ),
+    )
+    app.dependency_overrides[get_auth_service] = lambda: mock_service
+
+    body = client.post(
+        "/api/v1/auth/login",
+        json={"email": "robert@example.com", "password": "pass1234"},
+    ).json()
+
+    assert body["code"] == 0
+    data = body["data"]
+    assert set(data) == {"access_token", "token_type", "expires_in", "user"}
+    assert data["access_token"] == "jwt-token"
+    assert data["token_type"] == "bearer"
+    assert data["expires_in"] == 604800
+    assert set(data["user"]) == {"id", "username", "email", "role", "created_at"}
+    assert data["user"]["created_at"] == FIXED_DT_ISO
+
+
+def test_hanzi_levels_response_field_shape():
+    mock_service = AsyncMock()
+    mock_service.list_levels_with_progress.return_value = {
+        "levels": [
+            LevelForUser(
+                id="l1",
+                name="一级",
+                description=None,
+                order_index=1,
+                total=20,
+                learned=8,
+                created_at=FIXED_DT,
+                updated_at=FIXED_DT,
+            )
+        ]
+    }
+    app.dependency_overrides[get_hanzi_service] = lambda: mock_service
+    app.dependency_overrides[get_current_user_id] = lambda: "fake-user-id"
+
+    body = client.get("/api/v1/hanzi/levels").json()
+
+    assert body["code"] == 0
+    level = body["data"]["levels"][0]
+    # user 侧独有 learned；admin 侧没有这个字段（差异是刻意保留的）
+    assert set(level) == {
+        "id",
+        "name",
+        "description",
+        "order_index",
+        "total",
+        "learned",
+        "created_at",
+        "updated_at",
+    }
+    assert level["learned"] == 8
+    assert level["created_at"] == FIXED_DT_ISO
+    assert level["updated_at"] == FIXED_DT_ISO
+
+
+def test_t2i_templates_response_field_shape():
+    mock_service = AsyncMock()
+    mock_service.list_templates.return_value = {
+        "templates": [
+            TemplateOut(
+                id="tpl-1",
+                code="english-primer",
+                name="英文启蒙",
+                description=None,
+                prompt="cute {{item}} illustration",
+                order_index=0,
+                is_builtin=True,
+                created_at=FIXED_DT,
+                updated_at=FIXED_DT,
+            )
+        ]
+    }
+    app.dependency_overrides[get_t2i_task_service] = lambda: mock_service
+
+    body = client.get("/api/v1/ai/t2i/templates").json()
+
+    assert body["code"] == 0
+    template = body["data"]["templates"][0]
+    assert set(template) == {
+        "id",
+        "code",
+        "name",
+        "description",
+        "prompt",
+        "order_index",
+        "is_builtin",
+        "created_at",
+        "updated_at",
+    }
+    assert template["created_at"] == FIXED_DT_ISO
+    assert not template["created_at"].endswith("Z")

@@ -59,8 +59,8 @@ def generator(uow):
 
 
 @pytest.fixture
-def service(uow, ai, generator):
-    return T2ITaskService(uow=uow, ai=ai, generator=generator)
+def service(uow, generator):
+    return T2ITaskService(uow=uow, generator=generator)
 
 
 def _now() -> datetime:
@@ -136,9 +136,9 @@ async def test_list_templates(service, template_repo):
         _template("general", "常规"),
     ]
     out = await service.list_templates()
-    codes = [t["code"] for t in out["templates"]]
+    codes = [t.code for t in out["templates"]]
     assert codes == ["english-primer", "general"]
-    assert "prompt" in out["templates"][0]
+    assert out["templates"][0].prompt
 
 
 # ---------- create_template ----------
@@ -154,8 +154,8 @@ async def test_create_template_success(service, uow, template_repo):
         prompt="a cute {{item}} photo",
         order_index=2,
     )
-    assert out["code"] == "pets"
-    assert out["order_index"] == 2
+    assert out.code == "pets"
+    assert out.order_index == 2
     template_repo.add.assert_called_once()
     assert uow.commit.await_count == 1
 
@@ -218,9 +218,9 @@ async def test_update_template_success(service, template_repo):
         "tpl-1", name="改名", description="d",
         prompt="new {{item}}", order_index=5,
     )
-    assert out["name"] == "改名"
-    assert out["prompt"] == "new {{item}}"
-    assert out["order_index"] == 5
+    assert out.name == "改名"
+    assert out.prompt == "new {{item}}"
+    assert out.order_index == 5
 
 
 @pytest.mark.asyncio
@@ -303,10 +303,10 @@ async def test_list_tasks_success(service, template_repo, task_repo, image_repo)
     out = await service.list_tasks("english-primer", 1, 20)
 
     assert out["total"] == 1
-    assert out["template"]["code"] == "english-primer"
+    assert out["template"].code == "english-primer"
     item = out["items"][0]
-    assert item["business_status"] == "done"
-    assert item["summary"] == "apple"
+    assert item.business_status == "done"
+    assert item.summary == "apple"
 
 
 # ---------- create_task ----------
@@ -332,7 +332,7 @@ async def test_create_task_idempotent(
     out = await service.create_task("english-primer", {"item": "apple"})
 
     assert out["existing"] is True
-    assert out["task"]["id"] == existing.id
+    assert out["task"].id == existing.id
     task_repo.add.assert_not_called()
     assert generator.calls == []  # 命中已有任务不重新排队生成
     # 只刷新 updated_at 也是写用例：一次提交
@@ -349,8 +349,8 @@ async def test_create_task_new(
     out = await service.create_task("english-primer", {"item": "Apple"})
 
     assert out["existing"] is False
-    assert out["task"]["keywords"] == {"item": "Apple"}
-    assert out["task"]["status"] == "generating"
+    assert out["task"].keywords == {"item": "Apple"}
+    assert out["task"].status == "generating"
     task_repo.add.assert_called_once()
     image_repo.add.assert_called_once()
     # 顺序不变量，逐位锁死（只断言次数的话，把 commit 挪到 spawn 之后照样绿）：
@@ -370,7 +370,7 @@ async def test_create_task_new(
     # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
     assert len(generator.calls) == 1
     spawned_task_id, spawned_image_id, spawned_prompt = generator.calls[0]
-    assert spawned_task_id == out["task"]["id"]
+    assert spawned_task_id == out["task"].id
     assert spawned_prompt == "cute Apple illustration"
 
 
@@ -397,9 +397,9 @@ async def test_get_task_returns_images(service, task_repo, image_repo):
     image_repo.list_by_task.return_value = imgs
 
     out = await service.get_task(task.id)
-    assert out["task"]["images_available"] == 1
-    assert out["task"]["images_failed"] == 1
-    assert [i["id"] for i in out["images"]] == ["i1", "i2", "i3"]
+    assert out["task"].images_available == 1
+    assert out["task"].images_failed == 1
+    assert [i.id for i in out["images"]] == ["i1", "i2", "i3"]
 
 
 # ---------- retry_task ----------
@@ -444,7 +444,7 @@ async def test_retry_task_success(
     template_repo.find_by_code.return_value = _template()
 
     out = await service.retry_task("t1")
-    assert out["image"]["status"] == "generating"
+    assert out["image"].status == "generating"
     image_repo.add.assert_called_once()
     assert task.status == "generating"
     # 顺序不变量：图片入库并提交之后才排队生成（同上，spawn 后的 commit 会导致
@@ -455,7 +455,7 @@ async def test_retry_task_success(
     assert len(generator.calls) == 1
     spawned_task_id, spawned_image_id, _ = generator.calls[0]
     assert spawned_task_id == "t1"
-    assert spawned_image_id == out["image"]["id"]
+    assert spawned_image_id == out["image"].id
 
 
 # ---------- patch_image ----------

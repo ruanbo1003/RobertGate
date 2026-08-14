@@ -43,12 +43,10 @@ async def update_level(
     _: str = Depends(require_admin),
     service: AdminHanziService = Depends(get_admin_hanzi_service),
 ):
-    description_set = "description" in body.model_fields_set
     data = await service.update_level(
         level_id,
         name=body.name,
-        description=body.description,
-        description_set=description_set,
+        description=body.value_or_unset("description"),
         order_index=body.order_index,
     )
     return success(data)
@@ -108,13 +106,11 @@ async def update_character(
     _: str = Depends(require_admin),
     service: AdminHanziService = Depends(get_admin_hanzi_service),
 ):
-    example_words_set = "example_words" in body.model_fields_set
     data = await service.update_character(
         character_id,
         char=body.char,
         pinyin=body.pinyin,
-        example_words=body.example_words,
-        example_words_set=example_words_set,
+        example_words=body.value_or_unset("example_words"),
         order_index=body.order_index,
     )
     return success(data)

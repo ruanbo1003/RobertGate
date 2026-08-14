@@ -34,13 +34,13 @@ async def test_list_photos_success(tmp_path):
     result = await service.list_photos()
 
     assert result["total"] == 2
-    names = {p["filename"] for p in result["photos"]}
+    names = {p.filename for p in result["photos"]}
     assert names == {"photo1.jpg", "photo2.png"}
     for p in result["photos"]:
-        assert p["url"] == f"/photos/{p['filename']}"
-        assert p["thumbnail_url"] == f"/photos/thumbs/{p['filename']}"
-        assert p["width"] > 0
-        assert p["height"] > 0
+        assert p.url == f"/photos/{p.filename}"
+        assert p.thumbnail_url == f"/photos/thumbs/{p.filename}"
+        assert p.width > 0
+        assert p.height > 0
 
 
 @pytest.mark.asyncio
@@ -108,8 +108,8 @@ async def test_list_photos_dimension_cache_hit(tmp_path):
     result = await service.list_photos()
 
     photo = result["photos"][0]
-    assert photo["width"] == 800
-    assert photo["height"] == 600
+    assert photo.width == 800
+    assert photo.height == 600
 
 
 # ---------- Finding 1：非 OSError 异常必须降级而非让整个接口 5000 ----------
@@ -131,8 +131,8 @@ async def test_list_photos_degrades_on_non_oserror_pillow_exception(tmp_path, mo
 
     assert result["total"] == 1
     photo = result["photos"][0]
-    assert photo["width"] == 0
-    assert photo["height"] == 0
+    assert photo.width == 0
+    assert photo.height == 0
     assert not (thumb_dir / "photo1.jpg").exists()
 
 

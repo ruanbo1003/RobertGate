@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime
-
+from app.application.dto.hanzi import (
+    CharacterForUser,
+    LevelBrief,
+    LevelForUser,
+    ProgressOut,
+)
 from app.application.ports import AIClient
 from app.application.services._ai import ai_call
 from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.hanzi import HanziUserProgress
 from app.domain.repositories.uow import UnitOfWork
-
-
-def _iso(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt else None
 
 
 class HanziService:
@@ -29,16 +29,7 @@ class HanziService:
         )
         return {
             "levels": [
-                {
-                    "id": lv.id,
-                    "name": lv.name,
-                    "description": lv.description,
-                    "order_index": lv.order_index,
-                    "total": totals.get(lv.id, 0),
-                    "learned": learned.get(lv.id, 0),
-                    "created_at": _iso(lv.created_at),
-                    "updated_at": _iso(lv.updated_at),
-                }
+                LevelForUser.build(lv, totals.get(lv.id, 0), learned.get(lv.id, 0))
                 for lv in levels
             ]
         }
@@ -55,31 +46,15 @@ class HanziService:
             user_id, level_id
         )
         return {
-            "level": {
-                "id": level.id,
-                "name": level.name,
-                "description": level.description,
-                "order_index": level.order_index,
-            },
+            "level": LevelBrief.model_validate(level),
             "characters": [
-                {
-                    "id": c.id,
-                    "char": c.char,
-                    "pinyin": c.pinyin,
-                    "example_words": c.example_words or [],
-                    "order_index": c.order_index,
-                    "learned": c.id in progress_map,
-                    "learned_at": _iso(
-                        progress_map[c.id].learned_at if c.id in progress_map else None
-                    ),
-                }
-                for c in characters
+                CharacterForUser.build(c, progress_map.get(c.id)) for c in characters
             ],
         }
 
     async def update_progress(
         self, user_id: str, character_id: str, learned: bool
-    ) -> dict:
+    ) -> ProgressOut:
         character = ensure_found(
             await self.uow.hanzi_characters.find_by_id(character_id),
             codes.HANZI_NOT_FOUND,
@@ -89,28 +64,24 @@ class HanziService:
         existing = await self.uow.hanzi_progress.find(user_id, character_id)
         if learned:
             if existing:
-                return {
-                    "character_id": character_id,
-                    "learned": True,
-                    "learned_at": _iso(existing.learned_at),
-                }
+                return ProgressOut(
+                    character_id=character_id,
+                    learned=True,
+                    learned_at=existing.learned_at,
+                )
             progress = HanziUserProgress.new(user_id, character_id)
             self.uow.hanzi_progress.add(progress)
             await self.uow.commit()
-            return {
-                "character_id": character_id,
-                "learned": True,
-                "learned_at": _iso(progress.learned_at),
-            }
+            return ProgressOut(
+                character_id=character_id,
+                learned=True,
+                learned_at=progress.learned_at,
+            )
 
         if existing:
             await self.uow.hanzi_progress.delete(existing)
             await self.uow.commit()
-        return {
-            "character_id": character_id,
-            "learned": False,
-            "learned_at": None,
-        }
+        return ProgressOut(character_id=character_id, learned=False, learned_at=None)
 
     async def generate_practice_text(self, user_id: str, level_id: str) -> dict:
         level = ensure_found(

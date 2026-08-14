@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from app.application.dto.gallery import PhotoOut
 from app.domain.errors import ServerException, codes
 
 logger = logging.getLogger(__name__)
@@ -54,19 +55,11 @@ class GalleryService:
         except OSError:
             raise ServerException(codes.PHOTO_DIR_UNREADABLE, "照片目录读取失败")
 
-        photos = []
+        photos: list[PhotoOut] = []
         for f in files:
             width, height = self._get_dimensions(f)
             self._ensure_thumbnail(f)
-            photos.append(
-                {
-                    "filename": f.name,
-                    "url": f"/photos/{f.name}",
-                    "thumbnail_url": f"/photos/thumbs/{f.name}",
-                    "width": width,
-                    "height": height,
-                }
-            )
+            photos.append(PhotoOut.build(f, width, height))
 
         return {"photos": photos, "total": len(photos)}
 

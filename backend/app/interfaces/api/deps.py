@@ -137,4 +137,4 @@ async def get_t2i_task_service(
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> T2ITaskService:
     generator = T2IGenerator(new_uow, ai, fetch_image_bytes, get_task_runner())
-    return T2ITaskService(uow=uow, ai=ai, generator=generator)
+    return T2ITaskService(uow=uow, generator=generator)

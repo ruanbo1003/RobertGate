@@ -53,8 +53,8 @@ def _character(id_: str, char: str, level_id: str = "l1") -> HanziCharacter:
 async def test_create_level_success(service, uow, level_repo):
     level_repo.find_by_name.return_value = None
     result = await service.create_level("New Level", "desc", 3)
-    assert result["name"] == "New Level"
-    assert result["total"] == 0
+    assert result.name == "New Level"
+    assert result.total == 0
     level_repo.add.assert_called_once()
     assert uow.commit.await_count == 1
 
@@ -71,7 +71,7 @@ async def test_create_level_duplicate_name(service, level_repo):
 async def test_update_level_not_found(service, level_repo):
     level_repo.find_by_id.return_value = None
     with pytest.raises(ParamException) as exc:
-        await service.update_level("nope", "n", None, False, None)
+        await service.update_level("nope", "n", None, None)
     assert exc.value.code == 2010
 
 
@@ -80,7 +80,7 @@ async def test_update_level_name_conflict(service, level_repo):
     level_repo.find_by_id.return_value = _level("l1", "old")
     level_repo.find_by_name.return_value = _level("l2", "taken")
     with pytest.raises(ParamException) as exc:
-        await service.update_level("l1", "taken", None, False, None)
+        await service.update_level("l1", "taken", None, None)
     assert exc.value.code == 2011
 
 
@@ -91,13 +91,13 @@ async def test_update_level_success_partial(service, level_repo, character_repo)
     level_repo.find_by_name.return_value = None
     character_repo.count_by_level.return_value = 5
 
-    result = await service.update_level(
-        "l1", name="new", description=None, description_set=False, order_index=7
-    )
+    result = await service.update_level("l1", name="new", order_index=7)
 
-    assert result["name"] == "new"
-    assert result["order_index"] == 7
-    assert result["total"] == 5
+    assert result.name == "new"
+    assert result.order_index == 7
+    assert result.total == 5
+    # description 没传 -> 保持原值（未被 None 覆盖）
+    assert level.description is None
 
 
 @pytest.mark.asyncio
@@ -138,9 +138,9 @@ async def test_create_character_success(service, uow, level_repo, character_repo
 
     result = await service.create_character("l1", "人", "rén", ["人口"], None)
 
-    assert result["char"] == "人"
-    assert result["order_index"] == 5
-    assert result["example_words"] == ["人口"]
+    assert result.char == "人"
+    assert result.order_index == 5
+    assert result.example_words == ["人口"]
     character_repo.add.assert_called_once()
     assert uow.commit.await_count == 1
 
@@ -197,13 +197,13 @@ async def test_ai_add_mixed(service, level_repo, character_repo, ai):
     result = await service.ai_add("l1", "你好世界")
 
     assert result["ok"] == 2
-    added_chars = {a["char"] for a in result["added"]}
+    added_chars = {a.char for a in result["added"]}
     assert added_chars == {"你", "界"}
     assert result["skipped"] == [{"char": "好", "reason": "已存在"}]
     assert len(result["failed"]) == 1
     assert result["failed"][0]["char"] == "世"
     # order index continues from max+1
-    orders = sorted(a["order_index"] for a in result["added"])
+    orders = sorted(a.order_index for a in result["added"])
     assert orders == [0, 1]
     character_repo.add_many.assert_called_once()
 
@@ -227,10 +227,7 @@ async def test_update_character_char_conflict(service, character_repo):
     character_repo.find_by_id.return_value = _character("c1", "人")
     character_repo.find_by_char.return_value = _character("c2", "口")
     with pytest.raises(ParamException) as exc:
-        await service.update_character(
-            "c1", char="口", pinyin=None, example_words=None,
-            example_words_set=False, order_index=None,
-        )
+        await service.update_character("c1", char="口", pinyin=None)
     assert exc.value.code == 2011
 
 
@@ -242,12 +239,12 @@ async def test_update_character_success(service, character_repo):
 
     result = await service.update_character(
         "c1", char="口", pinyin="kǒu", example_words=["口水", "开口"],
-        example_words_set=True, order_index=3,
+        order_index=3,
     )
 
-    assert result["pinyin"] == "kǒu"
-    assert result["example_words"] == ["口水", "开口"]
-    assert result["order_index"] == 3
+    assert result.pinyin == "kǒu"
+    assert result.example_words == ["口水", "开口"]
+    assert result.order_index == 3
 
 
 @pytest.mark.asyncio
@@ -258,9 +255,8 @@ async def test_update_character_words_cleared_when_set(service, character_repo):
 
     result = await service.update_character(
         "c1", char=None, pinyin=None, example_words=None,
-        example_words_set=True, order_index=None,
     )
-    assert result["example_words"] == []
+    assert result.example_words == []
 
 
 @pytest.mark.asyncio

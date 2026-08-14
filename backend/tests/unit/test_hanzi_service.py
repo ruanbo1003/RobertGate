@@ -73,10 +73,10 @@ async def test_list_levels_returns_totals_and_learned(
     result = await service.list_levels_with_progress("u1")
 
     assert len(result["levels"]) == 2
-    assert result["levels"][0]["total"] == 20
-    assert result["levels"][0]["learned"] == 8
-    assert result["levels"][1]["total"] == 15
-    assert result["levels"][1]["learned"] == 0  # missing in map defaults to 0
+    assert result["levels"][0].total == 20
+    assert result["levels"][0].learned == 8
+    assert result["levels"][1].total == 15
+    assert result["levels"][1].learned == 0  # missing in map defaults to 0
 
 
 @pytest.mark.asyncio
@@ -110,12 +110,12 @@ async def test_list_characters_marks_learned_state(
 
     result = await service.list_characters_for_user("u1", "l1")
 
-    assert result["level"]["id"] == "l1"
+    assert result["level"].id == "l1"
     assert len(result["characters"]) == 2
-    assert result["characters"][0]["learned"] is True
-    assert result["characters"][0]["learned_at"] is not None
-    assert result["characters"][1]["learned"] is False
-    assert result["characters"][1]["learned_at"] is None
+    assert result["characters"][0].learned is True
+    assert result["characters"][0].learned_at is not None
+    assert result["characters"][1].learned is False
+    assert result["characters"][1].learned_at is None
 
 
 @pytest.mark.asyncio
@@ -138,8 +138,8 @@ async def test_update_progress_mark_learned_new(
 
     result = await service.update_progress("u1", "c1", True)
 
-    assert result["learned"] is True
-    assert result["learned_at"] is not None
+    assert result.learned is True
+    assert result.learned_at is not None
     progress_repo.add.assert_called_once()
     assert uow.commit.await_count == 1
 
@@ -156,7 +156,7 @@ async def test_update_progress_mark_learned_idempotent(
 
     result = await service.update_progress("u1", "c1", True)
 
-    assert result["learned"] is True
+    assert result.learned is True
     progress_repo.add.assert_not_called()
     # 只读分支不开事务
     uow.commit.assert_not_awaited()
@@ -175,8 +175,8 @@ async def test_update_progress_unmark_deletes(
 
     result = await service.update_progress("u1", "c1", False)
 
-    assert result["learned"] is False
-    assert result["learned_at"] is None
+    assert result.learned is False
+    assert result.learned_at is None
     progress_repo.delete.assert_awaited_once_with(existing)
     assert uow.commit.await_count == 1
 
@@ -190,7 +190,7 @@ async def test_update_progress_unmark_idempotent(
 
     result = await service.update_progress("u1", "c1", False)
 
-    assert result["learned"] is False
+    assert result.learned is False
     progress_repo.delete.assert_not_awaited()
     uow.commit.assert_not_awaited()
 

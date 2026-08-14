@@ -40,8 +40,8 @@ async def test_register_success(auth_service, uow, user_repo):
 
     result = await auth_service.register("newuser", "new@example.com", "pass1234")
 
-    assert result["access_token"]
-    assert result["user"]["username"] == "newuser"
+    assert result.access_token
+    assert result.user.username == "newuser"
     user_repo.add.assert_called_once()
     # 写用例事务边界：恰好提交一次
     assert uow.commit.await_count == 1
@@ -82,8 +82,8 @@ async def test_login_success(auth_service, user_repo):
 
     result = await auth_service.login("test@example.com", "pass1234")
 
-    assert result["access_token"]
-    assert result["user"]["username"] == "testuser"
+    assert result.access_token
+    assert result.user.username == "testuser"
 
 
 @pytest.mark.asyncio
@@ -121,11 +121,11 @@ async def test_get_me_success(auth_service, user_repo):
 
     result = await auth_service.get_me(user.id)
 
-    assert result["id"] == user.id
-    assert result["username"] == user.username
-    assert result["email"] == user.email
-    assert result["role"] == "user"
-    assert "created_at" in result
+    assert result.id == user.id
+    assert result.username == user.username
+    assert result.email == user.email
+    assert result.role == "user"
+    assert result.created_at == user.created_at
 
 
 @pytest.mark.asyncio

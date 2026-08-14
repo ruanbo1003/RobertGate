@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, field_validator
 
 from app.domain.models.hanzi import HANZI_RE, clean_example_words
+from app.interfaces.api.schemas._patch import PatchModel
 
 MAX_NAME_LEN = 64
 MAX_DESC_LEN = 500
@@ -59,7 +60,7 @@ class LevelCreateRequest(BaseModel):
         return v
 
 
-class LevelUpdateRequest(BaseModel):
+class LevelUpdateRequest(PatchModel):
     name: str | None = None
     description: str | None = None
     order_index: int | None = None
@@ -139,7 +140,7 @@ class CharacterCreateRequest(BaseModel):
         return v
 
 
-class CharacterUpdateRequest(BaseModel):
+class CharacterUpdateRequest(PatchModel):
     char: str | None = None
     pinyin: str | None = None
     example_words: list[str] | None = None

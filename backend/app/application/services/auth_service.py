@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from app.application.dto.auth import AuthResult, UserOut
 from app.application.ports import PasswordHasher, TokenProvider
 from app.domain.errors import AuthException, codes
 from app.domain.models.user import User
@@ -22,24 +23,15 @@ class AuthService:
 
     # --- Business operations ---
 
-    def _user_dict(self, user: User) -> dict:
-        return {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "role": user.role,
-            "created_at": user.created_at.isoformat(),
-        }
+    def _auth_result(self, user: User) -> AuthResult:
+        return AuthResult(
+            access_token=self.tokens.create(user.id),
+            token_type="bearer",
+            expires_in=self.tokens.ttl_seconds,
+            user=UserOut.model_validate(user),
+        )
 
-    def _auth_result(self, user: User) -> dict:
-        return {
-            "access_token": self.tokens.create(user.id),
-            "token_type": "bearer",
-            "expires_in": self.tokens.ttl_seconds,
-            "user": self._user_dict(user),
-        }
-
-    async def register(self, username: str, email: str, password: str) -> dict:
+    async def register(self, username: str, email: str, password: str) -> AuthResult:
         if await self.uow.users.find_by_username(username):
             raise AuthException(codes.USERNAME_TAKEN, "用户名已被使用")
         if await self.uow.users.find_by_email(email):
@@ -57,7 +49,7 @@ class AuthService:
         await self.uow.commit()
         return self._auth_result(user)
 
-    async def login(self, email: str, password: str) -> dict:
+    async def login(self, email: str, password: str) -> AuthResult:
         user = await self.uow.users.find_by_email(email)
         if not user:
             raise AuthException(codes.UNAUTHORIZED, "邮箱或密码错误")
@@ -67,11 +59,11 @@ class AuthService:
 
         return self._auth_result(user)
 
-    async def get_me(self, user_id: str) -> dict:
+    async def get_me(self, user_id: str) -> UserOut:
         user = await self.uow.users.find_by_id(user_id)
         if not user:
             raise AuthException(codes.UNAUTHORIZED, "未登录")
-        return self._user_dict(user)
+        return UserOut.model_validate(user)
 
     async def check_username(self, username: str) -> bool:
         return await self.uow.users.find_by_username(username) is None
