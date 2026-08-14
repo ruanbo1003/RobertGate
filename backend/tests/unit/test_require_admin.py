@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
-
 import pytest
 
 from app.application.services.auth_service import AuthService
 from app.domain.errors import AuthException
 from app.domain.models.user import User
 from app.interfaces.api.deps import require_admin
+
+from .conftest import make_uow
 
 
 def _user(role: str = "user") -> User:
@@ -21,9 +21,9 @@ def _user(role: str = "user") -> User:
 
 
 def _auth_service(find_by_id_return) -> AuthService:
-    repo = AsyncMock()
-    repo.find_by_id.return_value = find_by_id_return
-    return AuthService(user_repo=repo)
+    uow = make_uow()
+    uow.users.find_by_id.return_value = find_by_id_return
+    return AuthService(uow=uow)
 
 
 # ---------- AuthService.ensure_admin ----------

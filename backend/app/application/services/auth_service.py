@@ -9,14 +9,14 @@ from jose import jwt
 from app.config import get_settings
 from app.domain.errors import AuthException
 from app.domain.models.user import User
-from app.infrastructure.repositories.user_repo import UserRepo
+from app.domain.repositories.uow import UnitOfWork
 
 settings = get_settings()
 
 
 class AuthService:
-    def __init__(self, user_repo: UserRepo) -> None:
-        self.user_repo = user_repo
+    def __init__(self, uow: UnitOfWork) -> None:
+        self.uow = uow
 
     # --- Password ---
 
@@ -69,9 +69,9 @@ class AuthService:
         }
 
     async def register(self, username: str, email: str, password: str) -> dict:
-        if await self.user_repo.find_by_username(username):
+        if await self.uow.users.find_by_username(username):
             raise AuthException(2010, "用户名已被使用")
-        if await self.user_repo.find_by_email(email):
+        if await self.uow.users.find_by_email(email):
             raise AuthException(2011, "邮箱已被注册")
 
         user = User(
@@ -82,11 +82,12 @@ class AuthService:
             role="user",
             created_at=datetime.now(timezone.utc),
         )
-        await self.user_repo.save(user)
+        self.uow.users.add(user)
+        await self.uow.commit()
         return self._auth_result(user)
 
     async def login(self, email: str, password: str) -> dict:
-        user = await self.user_repo.find_by_email(email)
+        user = await self.uow.users.find_by_email(email)
         if not user:
             raise AuthException(1001, "邮箱或密码错误")
 
@@ -96,18 +97,18 @@ class AuthService:
         return self._auth_result(user)
 
     async def get_me(self, user_id: str) -> dict:
-        user = await self.user_repo.find_by_id(user_id)
+        user = await self.uow.users.find_by_id(user_id)
         if not user:
             raise AuthException(1001, "未登录")
         return self._user_dict(user)
 
     async def check_username(self, username: str) -> bool:
-        return await self.user_repo.find_by_username(username) is None
+        return await self.uow.users.find_by_username(username) is None
 
     async def check_email(self, email: str) -> bool:
-        return await self.user_repo.find_by_email(email) is None
+        return await self.uow.users.find_by_email(email) is None
 
     async def ensure_admin(self, user_id: str) -> None:
-        user = await self.user_repo.find_by_id(user_id)
+        user = await self.uow.users.find_by_id(user_id)
         if not user or user.role != "admin":
             raise AuthException(1002, "无权限")

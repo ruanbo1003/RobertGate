@@ -24,23 +24,23 @@ class FakeGenerator:
 
 
 @pytest.fixture
-def template_repo():
-    return AsyncMock()
+def template_repo(uow):
+    return uow.t2i_templates
 
 
 @pytest.fixture
-def task_repo():
-    return AsyncMock()
+def task_repo(uow):
+    return uow.t2i_tasks
 
 
 @pytest.fixture
-def image_repo():
-    return AsyncMock()
+def image_repo(uow):
+    return uow.t2i_images
 
 
 @pytest.fixture
-def blob_repo():
-    return AsyncMock()
+def blob_repo(uow):
+    return uow.t2i_blobs
 
 
 @pytest.fixture
@@ -54,15 +54,8 @@ def generator():
 
 
 @pytest.fixture
-def service(template_repo, task_repo, image_repo, blob_repo, ai, generator):
-    return T2ITaskService(
-        template_repo=template_repo,
-        task_repo=task_repo,
-        image_repo=image_repo,
-        blob_repo=blob_repo,
-        ai=ai,
-        generator=generator,
-    )
+def service(uow, ai, generator):
+    return T2ITaskService(uow=uow, ai=ai, generator=generator)
 
 
 def _now() -> datetime:
@@ -199,7 +192,7 @@ async def test_list_templates(service, template_repo):
 
 
 @pytest.mark.asyncio
-async def test_create_template_success(service, template_repo):
+async def test_create_template_success(service, uow, template_repo):
     template_repo.find_by_code.return_value = None
     out = await service.create_template(
         code="pets",
@@ -210,7 +203,8 @@ async def test_create_template_success(service, template_repo):
     )
     assert out["code"] == "pets"
     assert out["order_index"] == 2
-    template_repo.save.assert_awaited_once()
+    template_repo.add.assert_called_once()
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -316,13 +310,14 @@ async def test_delete_template_has_tasks_blocked(
 
 @pytest.mark.asyncio
 async def test_delete_template_success(
-    service, template_repo, task_repo
+    service, uow, template_repo, task_repo
 ):
     tpl = _template(code="pets")
     template_repo.find_by_id.return_value = tpl
     task_repo.count_by_template_code.return_value = 0
     await service.delete_template("tpl-1")
     template_repo.delete.assert_awaited_once_with(tpl)
+    assert uow.commit.await_count == 1
 
 
 # ---------- list_tasks ----------
@@ -374,7 +369,7 @@ async def test_create_task_unknown_template(service, template_repo):
 
 @pytest.mark.asyncio
 async def test_create_task_idempotent(
-    service, template_repo, task_repo, image_repo, generator
+    service, uow, template_repo, task_repo, image_repo, generator
 ):
     template_repo.find_by_code.return_value = _template()
     existing = _task()
@@ -385,13 +380,15 @@ async def test_create_task_idempotent(
 
     assert out["existing"] is True
     assert out["task"]["id"] == existing.id
-    task_repo.save.assert_not_called()
+    task_repo.add.assert_not_called()
     assert generator.calls == []  # 命中已有任务不重新排队生成
+    # 只刷新 updated_at 也是写用例：一次提交
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_create_task_new(
-    service, template_repo, task_repo, image_repo, generator
+    service, uow, template_repo, task_repo, image_repo, generator
 ):
     template_repo.find_by_code.return_value = _template()
     task_repo.find_by_hash.return_value = None
@@ -401,8 +398,10 @@ async def test_create_task_new(
     assert out["existing"] is False
     assert out["task"]["keywords"] == {"item": "Apple"}
     assert out["task"]["status"] == "generating"
-    task_repo.save.assert_awaited_once()
-    image_repo.save.assert_awaited_once()
+    task_repo.add.assert_called_once()
+    image_repo.add.assert_called_once()
+    # 任务 + 图片同一事务，且必须在 spawn 之前提交（后台任务另开 session 按 id 重查）
+    assert uow.commit.await_count == 1
 
     # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
     assert len(generator.calls) == 1
@@ -473,16 +472,18 @@ async def test_retry_task_template_deleted(
 
 @pytest.mark.asyncio
 async def test_retry_task_success(
-    service, task_repo, image_repo, template_repo, generator
+    service, uow, task_repo, image_repo, template_repo, generator
 ):
-    task_repo.find_by_id.return_value = _task()
+    task = _task()
+    task_repo.find_by_id.return_value = task
     image_repo.has_generating.return_value = False
     template_repo.find_by_code.return_value = _template()
 
     out = await service.retry_task("t1")
     assert out["image"]["status"] == "generating"
-    image_repo.save.assert_awaited_once()
-    task_repo.update.assert_awaited_once()
+    image_repo.add.assert_called_once()
+    assert task.status == "generating"
+    assert uow.commit.await_count == 1
 
     assert len(generator.calls) == 1
     spawned_task_id, spawned_image_id, _ = generator.calls[0]
@@ -510,7 +511,7 @@ async def test_patch_image_not_succeeded(service, image_repo):
 
 
 @pytest.mark.asyncio
-async def test_patch_image_flip(service, task_repo, image_repo):
+async def test_patch_image_flip(service, uow, task_repo, image_repo):
     img = _image(status="succeeded", available=False)
     image_repo.find_by_id.return_value = img
     task_repo.find_by_id.return_value = _task()
@@ -521,6 +522,8 @@ async def test_patch_image_flip(service, task_repo, image_repo):
     out = await service.patch_image("i1", True)
     assert img.available is True
     assert out["task_business_status"] == "done"
+    # 原实现在这里连续 commit 两次；合并为一次（原子性修复，对外行为不变）
+    assert uow.commit.await_count == 1
 
 
 # ---------- delete_image ----------
@@ -543,7 +546,7 @@ async def test_delete_image_available_guard(service, image_repo):
 
 
 @pytest.mark.asyncio
-async def test_delete_image_success(service, task_repo, image_repo, blob_repo):
+async def test_delete_image_success(service, uow, task_repo, image_repo, blob_repo):
     img = _image(status="succeeded", available=False)
     image_repo.find_by_id.return_value = img
     task_repo.find_by_id.return_value = _task()
@@ -554,6 +557,7 @@ async def test_delete_image_success(service, task_repo, image_repo, blob_repo):
     image_repo.delete.assert_awaited_once_with(img)
     assert out["images_total"] == 0
     assert out["task_business_status"] == "pending"
+    assert uow.commit.await_count == 1
 
 
 # ---------- get_image_bytes ----------

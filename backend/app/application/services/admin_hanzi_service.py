@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from app.application.ports import AIClient
 from app.domain.errors import ParamException
 from app.domain.models.hanzi import HanziCharacter, HanziLevel
-from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
-from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
+from app.domain.repositories.uow import UnitOfWork
 
 HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")
 HANZI_EXTRACT_RE = re.compile(r"[\u4e00-\u9fa5]")
@@ -56,27 +55,23 @@ def _extract_chars(text: str) -> list[str]:
 
 
 class AdminHanziService:
-    def __init__(
-        self,
-        level_repo: HanziLevelRepo,
-        character_repo: HanziCharacterRepo,
-        ai: AIClient,
-    ) -> None:
-        self.level_repo = level_repo
-        self.character_repo = character_repo
+    def __init__(self, uow: UnitOfWork, ai: AIClient) -> None:
+        self.uow = uow
         self.ai = ai
 
     # ---------- Levels ----------
 
     async def list_levels(self) -> dict:
-        levels = await self.level_repo.list_all()
-        totals = await self.character_repo.count_by_levels([lv.id for lv in levels])
+        levels = await self.uow.hanzi_levels.list_all()
+        totals = await self.uow.hanzi_characters.count_by_levels(
+            [lv.id for lv in levels]
+        )
         return {"levels": [_level_dict(lv, totals.get(lv.id, 0)) for lv in levels]}
 
     async def create_level(
         self, name: str, description: str | None, order_index: int
     ) -> dict:
-        if await self.level_repo.find_by_name(name):
+        if await self.uow.hanzi_levels.find_by_name(name):
             raise ParamException(2011, "级别名称已存在")
 
         now = datetime.now(timezone.utc)
@@ -88,7 +83,8 @@ class AdminHanziService:
             created_at=now,
             updated_at=now,
         )
-        await self.level_repo.save(level)
+        self.uow.hanzi_levels.add(level)
+        await self.uow.commit()
         return _level_dict(level, 0)
 
     async def update_level(
@@ -99,12 +95,12 @@ class AdminHanziService:
         description_set: bool,
         order_index: int | None,
     ) -> dict:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
         if name is not None and name != level.name:
-            duplicate = await self.level_repo.find_by_name(name)
+            duplicate = await self.uow.hanzi_levels.find_by_name(name)
             if duplicate and duplicate.id != level_id:
                 raise ParamException(2011, "级别名称已存在")
             level.name = name
@@ -116,29 +112,30 @@ class AdminHanziService:
             level.order_index = order_index
 
         level.updated_at = datetime.now(timezone.utc)
-        await self.level_repo.update(level)
+        await self.uow.commit()
 
-        total = await self.character_repo.count_by_level(level_id)
+        total = await self.uow.hanzi_characters.count_by_level(level_id)
         return _level_dict(level, total)
 
     async def delete_level(self, level_id: str) -> None:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
-        total = await self.character_repo.count_by_level(level_id)
+        total = await self.uow.hanzi_characters.count_by_level(level_id)
         if total > 0:
             raise ParamException(2012, "级别下仍有字条，请先清空")
 
-        await self.level_repo.delete(level)
+        await self.uow.hanzi_levels.delete(level)
+        await self.uow.commit()
 
     # ---------- Characters ----------
 
     async def list_characters(self, level_id: str) -> dict:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
-        characters = await self.character_repo.list_by_level(level_id)
+        characters = await self.uow.hanzi_characters.list_by_level(level_id)
         return {
             "level": {
                 "id": level.id,
@@ -157,15 +154,15 @@ class AdminHanziService:
         example_words: list[str] | None,
         order_index: int | None,
     ) -> dict:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
-        if await self.character_repo.find_by_char(char):
+        if await self.uow.hanzi_characters.find_by_char(char):
             raise ParamException(2011, "该字已存在（全局唯一）")
 
         if order_index is None:
-            order_index = await self.character_repo.max_order_index(level_id) + 1
+            order_index = await self.uow.hanzi_characters.max_order_index(level_id) + 1
 
         now = datetime.now(timezone.utc)
         character = HanziCharacter(
@@ -178,12 +175,13 @@ class AdminHanziService:
             created_at=now,
             updated_at=now,
         )
-        await self.character_repo.save(character)
+        self.uow.hanzi_characters.add(character)
+        await self.uow.commit()
         return _character_dict(character)
 
     async def ai_add(self, level_id: str, text: str) -> dict:
         """从文本抽取汉字，用 AI 生成拼音+例词，批量入库。"""
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
@@ -191,7 +189,7 @@ class AdminHanziService:
         if not chars:
             return {"ok": 0, "added": [], "skipped": [], "failed": []}
 
-        existing = await self.character_repo.existing_chars(chars)
+        existing = await self.uow.hanzi_characters.existing_chars(chars)
         skipped = [{"char": c, "reason": "已存在"} for c in chars if c in existing]
         to_generate = [c for c in chars if c not in existing]
 
@@ -211,7 +209,7 @@ class AdminHanziService:
         added: list[dict] = []
         failed: list[dict] = []
         to_insert: list[HanziCharacter] = []
-        next_order = await self.character_repo.max_order_index(level_id) + 1
+        next_order = await self.uow.hanzi_characters.max_order_index(level_id) + 1
         now = datetime.now(timezone.utc)
 
         for char, info in results:
@@ -239,7 +237,8 @@ class AdminHanziService:
             next_order += 1
 
         if to_insert:
-            await self.character_repo.save_many(to_insert)
+            self.uow.hanzi_characters.add_many(to_insert)
+            await self.uow.commit()
 
         return {
             "ok": len(added),
@@ -257,12 +256,12 @@ class AdminHanziService:
         example_words_set: bool,
         order_index: int | None,
     ) -> dict:
-        character = await self.character_repo.find_by_id(character_id)
+        character = await self.uow.hanzi_characters.find_by_id(character_id)
         if not character:
             raise ParamException(2010, "字条不存在")
 
         if char is not None and char != character.char:
-            duplicate = await self.character_repo.find_by_char(char)
+            duplicate = await self.uow.hanzi_characters.find_by_char(char)
             if duplicate and duplicate.id != character_id:
                 raise ParamException(2011, "该字已存在（全局唯一）")
             character.char = char
@@ -277,11 +276,12 @@ class AdminHanziService:
             character.order_index = order_index
 
         character.updated_at = datetime.now(timezone.utc)
-        await self.character_repo.update(character)
+        await self.uow.commit()
         return _character_dict(character)
 
     async def delete_character(self, character_id: str) -> None:
-        character = await self.character_repo.find_by_id(character_id)
+        character = await self.uow.hanzi_characters.find_by_id(character_id)
         if not character:
             raise ParamException(2010, "字条不存在")
-        await self.character_repo.delete(character)
+        await self.uow.hanzi_characters.delete(character)
+        await self.uow.commit()

@@ -16,23 +16,19 @@ from app.application.services.t2i_task_service import T2ITaskService
 from app.application.services.translate_service import TranslateService
 from app.config import get_settings
 from app.domain.errors import AuthException
+from app.domain.repositories.uow import UnitOfWork
 from app.infrastructure.ai.factory import get_ai_client
-from app.infrastructure.database.session import async_session, get_db
-from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
-from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
-from app.infrastructure.repositories.hanzi_progress_repo import HanziProgressRepo
-from app.infrastructure.repositories.t2i_repo import (
-    T2IImageBlobRepo,
-    T2IImageRepo,
-    T2ITaskRepo,
-    T2ITemplateRepo,
-)
-from app.infrastructure.repositories.user_repo import UserRepo
+from app.infrastructure.database.session import get_db
+from app.infrastructure.repositories.uow import SqlUnitOfWork, new_uow
 from app.infrastructure.tasks import AsyncioTaskRunner
 
 
-async def get_auth_service(db: AsyncSession = Depends(get_db)) -> AuthService:
-    return AuthService(user_repo=UserRepo(db))
+async def get_uow(db: AsyncSession = Depends(get_db)) -> UnitOfWork:
+    return SqlUnitOfWork(db)
+
+
+async def get_auth_service(uow: UnitOfWork = Depends(get_uow)) -> AuthService:
+    return AuthService(uow=uow)
 
 
 async def get_current_user_id(
@@ -67,26 +63,17 @@ async def get_translate_service(
 
 
 async def get_hanzi_service(
-    db: AsyncSession = Depends(get_db),
+    uow: UnitOfWork = Depends(get_uow),
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> HanziService:
-    return HanziService(
-        level_repo=HanziLevelRepo(db),
-        character_repo=HanziCharacterRepo(db),
-        progress_repo=HanziProgressRepo(db),
-        ai=ai,
-    )
+    return HanziService(uow=uow, ai=ai)
 
 
 async def get_admin_hanzi_service(
-    db: AsyncSession = Depends(get_db),
+    uow: UnitOfWork = Depends(get_uow),
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> AdminHanziService:
-    return AdminHanziService(
-        level_repo=HanziLevelRepo(db),
-        character_repo=HanziCharacterRepo(db),
-        ai=ai,
-    )
+    return AdminHanziService(uow=uow, ai=ai)
 
 
 def get_english_service() -> EnglishService:
@@ -116,20 +103,13 @@ def get_task_runner() -> AsyncioTaskRunner:
 
 
 async def get_t2i_task_service(
-    db: AsyncSession = Depends(get_db),
+    uow: UnitOfWork = Depends(get_uow),
     ai: AIClient = Depends(get_ai_client_dep),
 ) -> T2ITaskService:
     generator = T2IGenerator(
-        session_factory=async_session,
+        uow_factory=new_uow,
         ai=ai,
         fetch_image=fetch_image_bytes,
         runner=get_task_runner(),
     )
-    return T2ITaskService(
-        template_repo=T2ITemplateRepo(db),
-        task_repo=T2ITaskRepo(db),
-        image_repo=T2IImageRepo(db),
-        blob_repo=T2IImageBlobRepo(db),
-        ai=ai,
-        generator=generator,
-    )
+    return T2ITaskService(uow=uow, ai=ai, generator=generator)

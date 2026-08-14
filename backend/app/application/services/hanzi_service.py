@@ -6,9 +6,7 @@ from datetime import datetime, timezone
 from app.application.ports import AIClient
 from app.domain.errors import ParamException
 from app.domain.models.hanzi import HanziUserProgress
-from app.infrastructure.repositories.hanzi_character_repo import HanziCharacterRepo
-from app.infrastructure.repositories.hanzi_level_repo import HanziLevelRepo
-from app.infrastructure.repositories.hanzi_progress_repo import HanziProgressRepo
+from app.domain.repositories.uow import UnitOfWork
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -18,23 +16,17 @@ def _iso(dt: datetime | None) -> str | None:
 class HanziService:
     """用户侧：查看级别、字表、切换学习状态。"""
 
-    def __init__(
-        self,
-        level_repo: HanziLevelRepo,
-        character_repo: HanziCharacterRepo,
-        progress_repo: HanziProgressRepo,
-        ai: AIClient,
-    ) -> None:
-        self.level_repo = level_repo
-        self.character_repo = character_repo
-        self.progress_repo = progress_repo
+    def __init__(self, uow: UnitOfWork, ai: AIClient) -> None:
+        self.uow = uow
         self.ai = ai
 
     async def list_levels_with_progress(self, user_id: str) -> dict:
-        levels = await self.level_repo.list_all()
+        levels = await self.uow.hanzi_levels.list_all()
         level_ids = [lv.id for lv in levels]
-        totals = await self.character_repo.count_by_levels(level_ids)
-        learned = await self.progress_repo.learned_count_by_levels(user_id, level_ids)
+        totals = await self.uow.hanzi_characters.count_by_levels(level_ids)
+        learned = await self.uow.hanzi_progress.learned_count_by_levels(
+            user_id, level_ids
+        )
         return {
             "levels": [
                 {
@@ -52,12 +44,12 @@ class HanziService:
         }
 
     async def list_characters_for_user(self, user_id: str, level_id: str) -> dict:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
-        characters = await self.character_repo.list_by_level(level_id)
-        progress_map = await self.progress_repo.progress_map_by_level(
+        characters = await self.uow.hanzi_characters.list_by_level(level_id)
+        progress_map = await self.uow.hanzi_progress.progress_map_by_level(
             user_id, level_id
         )
         return {
@@ -86,11 +78,11 @@ class HanziService:
     async def update_progress(
         self, user_id: str, character_id: str, learned: bool
     ) -> dict:
-        character = await self.character_repo.find_by_id(character_id)
+        character = await self.uow.hanzi_characters.find_by_id(character_id)
         if not character:
             raise ParamException(2010, "字条不存在")
 
-        existing = await self.progress_repo.find(user_id, character_id)
+        existing = await self.uow.hanzi_progress.find(user_id, character_id)
         if learned:
             if existing:
                 return {
@@ -105,7 +97,8 @@ class HanziService:
                 character_id=character_id,
                 learned_at=now,
             )
-            await self.progress_repo.save(progress)
+            self.uow.hanzi_progress.add(progress)
+            await self.uow.commit()
             return {
                 "character_id": character_id,
                 "learned": True,
@@ -113,7 +106,8 @@ class HanziService:
             }
 
         if existing:
-            await self.progress_repo.delete(existing)
+            await self.uow.hanzi_progress.delete(existing)
+            await self.uow.commit()
         return {
             "character_id": character_id,
             "learned": False,
@@ -121,12 +115,12 @@ class HanziService:
         }
 
     async def generate_practice_text(self, user_id: str, level_id: str) -> dict:
-        level = await self.level_repo.find_by_id(level_id)
+        level = await self.uow.hanzi_levels.find_by_id(level_id)
         if not level:
             raise ParamException(2010, "级别不存在")
 
-        characters = await self.character_repo.list_by_level(level_id)
-        progress_map = await self.progress_repo.progress_map_by_level(
+        characters = await self.uow.hanzi_characters.list_by_level(level_id)
+        progress_map = await self.uow.hanzi_progress.progress_map_by_level(
             user_id, level_id
         )
         learned_chars = [c.char for c in characters if c.id in progress_map]

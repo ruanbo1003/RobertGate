@@ -9,13 +9,13 @@ from app.domain.models.hanzi import HanziCharacter, HanziLevel
 
 
 @pytest.fixture
-def level_repo():
-    return AsyncMock()
+def level_repo(uow):
+    return uow.hanzi_levels
 
 
 @pytest.fixture
-def character_repo():
-    return AsyncMock()
+def character_repo(uow):
+    return uow.hanzi_characters
 
 
 @pytest.fixture
@@ -24,10 +24,8 @@ def ai():
 
 
 @pytest.fixture
-def service(level_repo, character_repo, ai):
-    return AdminHanziService(
-        level_repo=level_repo, character_repo=character_repo, ai=ai
-    )
+def service(uow, ai):
+    return AdminHanziService(uow=uow, ai=ai)
 
 
 def _level(id_: str = "l1", name: str = "L1") -> HanziLevel:
@@ -61,12 +59,13 @@ def test_extract_chars_empty():
 
 
 @pytest.mark.asyncio
-async def test_create_level_success(service, level_repo):
+async def test_create_level_success(service, uow, level_repo):
     level_repo.find_by_name.return_value = None
     result = await service.create_level("New Level", "desc", 3)
     assert result["name"] == "New Level"
     assert result["total"] == 0
-    level_repo.save.assert_awaited_once()
+    level_repo.add.assert_called_once()
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -128,19 +127,20 @@ async def test_delete_level_non_empty(service, level_repo, character_repo):
 
 
 @pytest.mark.asyncio
-async def test_delete_level_success(service, level_repo, character_repo):
+async def test_delete_level_success(service, uow, level_repo, character_repo):
     level = _level()
     level_repo.find_by_id.return_value = level
     character_repo.count_by_level.return_value = 0
     await service.delete_level("l1")
     level_repo.delete.assert_awaited_once_with(level)
+    assert uow.commit.await_count == 1
 
 
 # ---------- Characters ----------
 
 
 @pytest.mark.asyncio
-async def test_create_character_success(service, level_repo, character_repo):
+async def test_create_character_success(service, uow, level_repo, character_repo):
     level_repo.find_by_id.return_value = _level()
     character_repo.find_by_char.return_value = None
     character_repo.max_order_index.return_value = 4
@@ -150,7 +150,8 @@ async def test_create_character_success(service, level_repo, character_repo):
     assert result["char"] == "人"
     assert result["order_index"] == 5
     assert result["example_words"] == ["人口"]
-    character_repo.save.assert_awaited_once()
+    character_repo.add.assert_called_once()
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -176,10 +177,12 @@ async def test_create_character_global_conflict(
 
 
 @pytest.mark.asyncio
-async def test_ai_add_no_hanzi(service, level_repo):
+async def test_ai_add_no_hanzi(service, uow, level_repo):
     level_repo.find_by_id.return_value = _level()
     result = await service.ai_add("l1", "hello 123")
     assert result == {"ok": 0, "added": [], "skipped": [], "failed": []}
+    # 没有落库就没有事务
+    uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -211,7 +214,7 @@ async def test_ai_add_mixed(service, level_repo, character_repo, ai):
     # order index continues from max+1
     orders = sorted(a["order_index"] for a in result["added"])
     assert orders == [0, 1]
-    character_repo.save_many.assert_awaited_once()
+    character_repo.add_many.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -270,11 +273,12 @@ async def test_update_character_words_cleared_when_set(service, character_repo):
 
 
 @pytest.mark.asyncio
-async def test_delete_character_success(service, character_repo):
+async def test_delete_character_success(service, uow, character_repo):
     c = _character("c1", "人")
     character_repo.find_by_id.return_value = c
     await service.delete_character("c1")
     character_repo.delete.assert_awaited_once_with(c)
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio

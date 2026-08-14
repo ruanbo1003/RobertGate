@@ -9,18 +9,18 @@ from app.domain.models.hanzi import HanziCharacter, HanziLevel, HanziUserProgres
 
 
 @pytest.fixture
-def level_repo():
-    return AsyncMock()
+def level_repo(uow):
+    return uow.hanzi_levels
 
 
 @pytest.fixture
-def character_repo():
-    return AsyncMock()
+def character_repo(uow):
+    return uow.hanzi_characters
 
 
 @pytest.fixture
-def progress_repo():
-    return AsyncMock()
+def progress_repo(uow):
+    return uow.hanzi_progress
 
 
 @pytest.fixture
@@ -29,13 +29,8 @@ def ai():
 
 
 @pytest.fixture
-def service(level_repo, character_repo, progress_repo, ai):
-    return HanziService(
-        level_repo=level_repo,
-        character_repo=character_repo,
-        progress_repo=progress_repo,
-        ai=ai,
-    )
+def service(uow, ai):
+    return HanziService(uow=uow, ai=ai)
 
 
 def _lvl(id_: str = "l1") -> HanziLevel:

@@ -17,12 +17,7 @@ from app.application.ports import AIClient
 from app.application.services.t2i_generation import T2IGenerator
 from app.domain.errors import ParamException
 from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.infrastructure.repositories.t2i_repo import (
-    T2IImageBlobRepo,
-    T2IImageRepo,
-    T2ITaskRepo,
-    T2ITemplateRepo,
-)
+from app.domain.repositories.uow import UnitOfWork
 
 
 ITEM_MAX_LENGTH = 100
@@ -120,24 +115,18 @@ def _image_dict(img: T2IImage) -> dict:
 class T2ITaskService:
     def __init__(
         self,
-        template_repo: T2ITemplateRepo,
-        task_repo: T2ITaskRepo,
-        image_repo: T2IImageRepo,
-        blob_repo: T2IImageBlobRepo,
+        uow: UnitOfWork,
         ai: AIClient,
         generator: T2IGenerator,
     ) -> None:
-        self.template_repo = template_repo
-        self.task_repo = task_repo
-        self.image_repo = image_repo
-        self.blob_repo = blob_repo
+        self.uow = uow
         self.ai = ai
         self.generator = generator
 
     # ---- Templates ----
 
     async def list_templates(self) -> dict:
-        rows = await self.template_repo.list_all()
+        rows = await self.uow.t2i_templates.list_all()
         return {"templates": [_template_dict(t) for t in rows]}
 
     async def create_template(
@@ -165,7 +154,7 @@ class T2ITaskService:
         if ITEM_PLACEHOLDER not in prompt:
             raise ParamException(2032, f"prompt 必须包含占位符 {ITEM_PLACEHOLDER}")
 
-        existing = await self.template_repo.find_by_code(code)
+        existing = await self.uow.t2i_templates.find_by_code(code)
         if existing is not None:
             raise ParamException(2033, "code 已存在")
 
@@ -181,7 +170,8 @@ class T2ITaskService:
             created_at=now,
             updated_at=now,
         )
-        await self.template_repo.save(tpl)
+        self.uow.t2i_templates.add(tpl)
+        await self.uow.commit()
         return _template_dict(tpl)
 
     async def update_template(
@@ -192,7 +182,7 @@ class T2ITaskService:
         prompt: str,
         order_index: int | None,
     ) -> dict:
-        tpl = await self.template_repo.find_by_id(template_id)
+        tpl = await self.uow.t2i_templates.find_by_id(template_id)
         if tpl is None:
             raise ParamException(2034, "模板不存在")
         if tpl.is_builtin:
@@ -215,40 +205,41 @@ class T2ITaskService:
         if order_index is not None:
             tpl.order_index = order_index
         tpl.updated_at = datetime.now(timezone.utc)
-        await self.template_repo.update(tpl)
+        await self.uow.commit()
         return _template_dict(tpl)
 
     async def delete_template(self, template_id: str) -> None:
-        tpl = await self.template_repo.find_by_id(template_id)
+        tpl = await self.uow.t2i_templates.find_by_id(template_id)
         if tpl is None:
             raise ParamException(2034, "模板不存在")
         if tpl.is_builtin:
             raise ParamException(2035, "内置模板不可删除")
 
-        used = await self.task_repo.count_by_template_code(tpl.code)
+        used = await self.uow.t2i_tasks.count_by_template_code(tpl.code)
         if used > 0:
             raise ParamException(
                 2036, f"该模板下已有 {used} 个任务，请先删除任务再删除模板"
             )
-        await self.template_repo.delete(tpl)
+        await self.uow.t2i_templates.delete(tpl)
+        await self.uow.commit()
 
     # ---- Tasks ----
 
     async def list_tasks(
         self, template_code: str, page: int, page_size: int
     ) -> dict:
-        tpl = await self.template_repo.find_by_code(template_code)
+        tpl = await self.uow.t2i_templates.find_by_code(template_code)
         if tpl is None:
             raise ParamException(2020, "template_code 不存在")
         if page < 1 or page_size < 1 or page_size > 50:
             raise ParamException(2021, "分页参数非法")
 
-        tasks, total = await self.task_repo.list_by_template(
+        tasks, total = await self.uow.t2i_tasks.list_by_template(
             template_code, page, page_size
         )
         items = []
         for t in tasks:
-            imgs = await self.image_repo.list_by_task(t.id)
+            imgs = await self.uow.t2i_images.list_by_task(t.id)
             items.append(_task_summary_dict(t, imgs))
 
         return {
@@ -262,18 +253,18 @@ class T2ITaskService:
     async def create_task(
         self, template_code: str, raw_keywords: dict[str, Any]
     ) -> dict:
-        tpl = await self.template_repo.find_by_code(template_code)
+        tpl = await self.uow.t2i_templates.find_by_code(template_code)
         if tpl is None:
             raise ParamException(2020, "template_code 不存在")
 
         keywords = _normalize_item(raw_keywords)
         h = _canonical_hash(template_code, keywords)
 
-        existing = await self.task_repo.find_by_hash(h)
+        existing = await self.uow.t2i_tasks.find_by_hash(h)
         if existing is not None:
             existing.updated_at = datetime.now(timezone.utc)
-            await self.task_repo.update(existing)
-            imgs = await self.image_repo.list_by_task(existing.id)
+            await self.uow.commit()
+            imgs = await self.uow.t2i_images.list_by_task(existing.id)
             return {"existing": True, "task": _task_summary_dict(existing, imgs)}
 
         now = datetime.now(timezone.utc)
@@ -287,7 +278,7 @@ class T2ITaskService:
             created_at=now,
             updated_at=now,
         )
-        await self.task_repo.save(task)
+        self.uow.t2i_tasks.add(task)
 
         image = T2IImage(
             id=str(uuid.uuid4()),
@@ -297,7 +288,8 @@ class T2ITaskService:
             mime=None,
             created_at=now,
         )
-        await self.image_repo.save(image)
+        self.uow.t2i_images.add(image)
+        await self.uow.commit()
 
         prompt = _build_prompt(tpl.prompt, keywords)
         self.generator.spawn(task.id, image.id, prompt)
@@ -305,10 +297,10 @@ class T2ITaskService:
         return {"existing": False, "task": _task_summary_dict(task, [image])}
 
     async def get_task(self, task_id: str) -> dict:
-        task = await self.task_repo.find_by_id(task_id)
+        task = await self.uow.t2i_tasks.find_by_id(task_id)
         if task is None:
             raise ParamException(2023, "任务不存在")
-        images = await self.image_repo.list_by_task(task_id)
+        images = await self.uow.t2i_images.list_by_task(task_id)
         summary = _task_summary_dict(task, images)
         summary["images_failed"] = sum(1 for i in images if i.status == "failed")
         return {
@@ -317,13 +309,13 @@ class T2ITaskService:
         }
 
     async def retry_task(self, task_id: str) -> dict:
-        task = await self.task_repo.find_by_id(task_id)
+        task = await self.uow.t2i_tasks.find_by_id(task_id)
         if task is None:
             raise ParamException(2023, "任务不存在")
-        if await self.image_repo.has_generating(task_id):
+        if await self.uow.t2i_images.has_generating(task_id):
             raise ParamException(2024, "已有正在生成的图片，请稍候")
 
-        tpl = await self.template_repo.find_by_code(task.template_code)
+        tpl = await self.uow.t2i_templates.find_by_code(task.template_code)
         if tpl is None:
             raise ParamException(2020, "任务所属模板已删除")
 
@@ -336,11 +328,11 @@ class T2ITaskService:
             mime=None,
             created_at=now,
         )
-        await self.image_repo.save(image)
+        self.uow.t2i_images.add(image)
 
         task.status = "generating"
         task.updated_at = now
-        await self.task_repo.update(task)
+        await self.uow.commit()
 
         prompt = _build_prompt(tpl.prompt, task.keywords)
         self.generator.spawn(task_id, image.id, prompt)
@@ -350,21 +342,20 @@ class T2ITaskService:
     # ---- Images ----
 
     async def patch_image(self, image_id: str, available: bool) -> dict:
-        image = await self.image_repo.find_by_id(image_id)
+        image = await self.uow.t2i_images.find_by_id(image_id)
         if image is None:
             raise ParamException(2025, "图片不存在")
         if image.status != "succeeded":
             raise ParamException(2026, "只有已生成的图片可以标记")
 
         image.available = available
-        await self.image_repo.update(image)
 
-        task = await self.task_repo.find_by_id(image.task_id)
+        task = await self.uow.t2i_tasks.find_by_id(image.task_id)
         if task is not None:
             task.updated_at = datetime.now(timezone.utc)
-            await self.task_repo.update(task)
+        await self.uow.commit()
 
-        siblings = await self.image_repo.list_by_task(image.task_id)
+        siblings = await self.uow.t2i_images.list_by_task(image.task_id)
         return {
             "id": image.id,
             "available": image.available,
@@ -373,22 +364,22 @@ class T2ITaskService:
         }
 
     async def delete_image(self, image_id: str) -> dict:
-        image = await self.image_repo.find_by_id(image_id)
+        image = await self.uow.t2i_images.find_by_id(image_id)
         if image is None:
             raise ParamException(2025, "图片不存在")
         if image.available:
             raise ParamException(2027, "可用图片不可删除，请先取消可用")
 
         task_id = image.task_id
-        await self.blob_repo.delete_by_image(image_id)
-        await self.image_repo.delete(image)
+        await self.uow.t2i_blobs.delete_by_image(image_id)
+        await self.uow.t2i_images.delete(image)
 
-        task = await self.task_repo.find_by_id(task_id)
+        task = await self.uow.t2i_tasks.find_by_id(task_id)
         if task is not None:
             task.updated_at = datetime.now(timezone.utc)
-            await self.task_repo.update(task)
+        await self.uow.commit()
 
-        siblings = await self.image_repo.list_by_task(task_id)
+        siblings = await self.uow.t2i_images.list_by_task(task_id)
         succeeded = [i for i in siblings if i.status == "succeeded"]
         available = [i for i in succeeded if i.available]
         return {
@@ -400,7 +391,7 @@ class T2ITaskService:
         }
 
     async def get_image_bytes(self, image_id: str) -> tuple[bytes, str] | None:
-        row = await self.blob_repo.get_bytes(image_id)
+        row = await self.uow.t2i_blobs.get_bytes(image_id)
         if row is None:
             return None
         payload, mime = row

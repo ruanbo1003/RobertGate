@@ -2,6 +2,9 @@
 
 由 T2ITaskService 的 create_task / retry_task 调用 spawn() 排队后立即返回，
 生成结果异步写回 DB（成功/失败两条路径）。
+
+后台任务脱离请求生命周期，不能复用请求的 session，因此注入 uow_factory
+（异步上下文管理器）自开一个工作单元，用完即提交。
 """
 
 from __future__ import annotations
@@ -14,7 +17,6 @@ import httpx
 
 from app.application.ports import AIClient
 from app.domain.models.t2i import T2IImageBlob
-from app.infrastructure.repositories.t2i_repo import T2IImageBlobRepo, T2IImageRepo, T2ITaskRepo
 from app.infrastructure.tasks import TaskRunner
 
 logger = logging.getLogger(__name__)
@@ -32,12 +34,12 @@ async def fetch_image_bytes(url: str) -> tuple[bytes, str]:
 class T2IGenerator:
     def __init__(
         self,
-        session_factory,
+        uow_factory,
         ai: AIClient,
         fetch_image: FetchImage,
         runner: TaskRunner,
     ) -> None:
-        self._session_factory = session_factory
+        self._uow_factory = uow_factory
         self._ai = ai
         self._fetch_image = fetch_image
         self._runner = runner
@@ -62,39 +64,33 @@ class T2IGenerator:
             await self._mark_failed(task_id, image_id)
             return
 
-        async with self._session_factory() as session:
-            image_repo = T2IImageRepo(session)
-            blob_repo = T2IImageBlobRepo(session)
-            task_repo = T2ITaskRepo(session)
-
-            img = await image_repo.find_by_id(image_id)
+        async with self._uow_factory() as uow:
+            img = await uow.t2i_images.find_by_id(image_id)
             if img is None:
                 return
             img.status = "succeeded"
             img.mime = mime
-            blob = T2IImageBlob(image_id=image_id, bytes_=payload)
-            await blob_repo.save(blob)
-            await image_repo.update(img)
+            uow.t2i_blobs.add(T2IImageBlob(image_id=image_id, bytes_=payload))
 
-            task = await task_repo.find_by_id(task_id)
+            task = await uow.t2i_tasks.find_by_id(task_id)
             if task is not None:
                 task.status = "succeeded"
                 task.last_failed = False
                 task.updated_at = datetime.now(timezone.utc)
-                await task_repo.update(task)
+
+            await uow.commit()
 
     async def _mark_failed(self, task_id: str, image_id: str) -> None:
-        async with self._session_factory() as session:
-            image_repo = T2IImageRepo(session)
-            task_repo = T2ITaskRepo(session)
-            img = await image_repo.find_by_id(image_id)
+        async with self._uow_factory() as uow:
+            img = await uow.t2i_images.find_by_id(image_id)
             if img is None:
                 return
             img.status = "failed"
-            await image_repo.update(img)
-            task = await task_repo.find_by_id(task_id)
+
+            task = await uow.t2i_tasks.find_by_id(task_id)
             if task is not None:
                 task.status = "failed"
                 task.last_failed = True
                 task.updated_at = datetime.now(timezone.utc)
-                await task_repo.update(task)
+
+            await uow.commit()

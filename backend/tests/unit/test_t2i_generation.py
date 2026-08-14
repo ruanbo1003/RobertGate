@@ -2,8 +2,8 @@
 
 用 InlineRunner 代替真实 AsyncioTaskRunner——spawn() 只捕获 coroutine，
 测试自己 await 它，从而在同一个事件循环里同步驱动、断言结果。
-repo 类在 t2i_generation 模块内按 session 现造，因此这里 monkeypatch 模块
-里的 Repo 类为返回固定 AsyncMock 实例的工厂，绕开真实 DB。
+生成器现在注入 uow_factory，因此这里直接喂一个返回假 UoW 的工厂，
+不再 monkeypatch 模块里的 Repo 符号。
 """
 
 from datetime import datetime, timezone
@@ -11,9 +11,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.application.services import t2i_generation as gen
 from app.application.services.t2i_generation import T2IGenerator
 from app.domain.models.t2i import T2IImage, T2ITask
+
+from .conftest import make_uow
 
 
 class InlineRunner:
@@ -24,12 +25,12 @@ class InlineRunner:
         self.captured = coro
 
 
-class _FakeSessionCM:
-    def __init__(self, session):
-        self._session = session
+class _FakeUowCM:
+    def __init__(self, uow):
+        self._uow = uow
 
     async def __aenter__(self):
-        return self._session
+        return self._uow
 
     async def __aexit__(self, *exc_info):
         return False
@@ -61,16 +62,9 @@ def _task(status: str = "generating") -> T2ITask:
 
 
 @pytest.fixture
-def fake_repos(monkeypatch):
-    image_repo = AsyncMock()
-    task_repo = AsyncMock()
-    blob_repo = AsyncMock()
-
-    monkeypatch.setattr(gen, "T2IImageRepo", lambda session: image_repo)
-    monkeypatch.setattr(gen, "T2ITaskRepo", lambda session: task_repo)
-    monkeypatch.setattr(gen, "T2IImageBlobRepo", lambda session: blob_repo)
-
-    return image_repo, task_repo, blob_repo
+def bg_uow():
+    """后台任务自开的工作单元（与请求 session 无关）。"""
+    return make_uow()
 
 
 @pytest.fixture
@@ -94,10 +88,9 @@ def fetch_image():
 
 
 @pytest.fixture
-def generator(runner, ai, fetch_image):
-    session = object()
+def generator(runner, ai, fetch_image, bg_uow):
     return T2IGenerator(
-        session_factory=lambda: _FakeSessionCM(session),
+        uow_factory=lambda: _FakeUowCM(bg_uow),
         ai=ai,
         fetch_image=fetch_image,
         runner=runner,
@@ -114,11 +107,12 @@ async def test_spawn_delegates_to_runner(generator, runner):
 
 @pytest.mark.asyncio
 async def test_run_success_marks_image_and_task_succeeded(
-    generator, runner, ai, fetch_image, fake_repos
+    generator, runner, ai, fetch_image, bg_uow
 ):
-    image_repo, task_repo, blob_repo = fake_repos
-    image_repo.find_by_id.return_value = _image()
-    task_repo.find_by_id.return_value = _task()
+    img = _image()
+    task = _task()
+    bg_uow.t2i_images.find_by_id.return_value = img
+    bg_uow.t2i_tasks.find_by_id.return_value = task
 
     generator.spawn("task-1", "img-1", "a cute cat")
     await runner.captured
@@ -126,76 +120,73 @@ async def test_run_success_marks_image_and_task_succeeded(
     ai.generate_image.assert_awaited_once_with("a cute cat")
     fetch_image.assert_awaited_once_with("https://example.com/generated.png")
 
-    img_arg = image_repo.update.call_args.args[0]
-    assert img_arg.status == "succeeded"
-    assert img_arg.mime == "image/png"
-    blob_repo.save.assert_awaited_once()
+    assert img.status == "succeeded"
+    assert img.mime == "image/png"
+    bg_uow.t2i_blobs.add.assert_called_once()
 
-    task_arg = task_repo.update.call_args.args[0]
-    assert task_arg.status == "succeeded"
-    assert task_arg.last_failed is False
+    assert task.status == "succeeded"
+    assert task.last_failed is False
+    # 原实现三次 commit（blob / image / task），现在合并为一次
+    assert bg_uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_run_generate_image_failure_marks_failed(
-    generator, runner, ai, fake_repos
-):
-    image_repo, task_repo, blob_repo = fake_repos
+async def test_run_generate_image_failure_marks_failed(generator, runner, ai, bg_uow):
+    img = _image()
+    task = _task()
     ai.generate_image.side_effect = RuntimeError("boom")
-    image_repo.find_by_id.return_value = _image()
-    task_repo.find_by_id.return_value = _task()
+    bg_uow.t2i_images.find_by_id.return_value = img
+    bg_uow.t2i_tasks.find_by_id.return_value = task
 
     generator.spawn("task-1", "img-1", "a cute cat")
     await runner.captured
 
-    blob_repo.save.assert_not_called()
-    img_arg = image_repo.update.call_args.args[0]
-    assert img_arg.status == "failed"
-    task_arg = task_repo.update.call_args.args[0]
-    assert task_arg.status == "failed"
-    assert task_arg.last_failed is True
+    bg_uow.t2i_blobs.add.assert_not_called()
+    assert img.status == "failed"
+    assert task.status == "failed"
+    assert task.last_failed is True
+    assert bg_uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_run_fetch_image_failure_marks_failed(
-    generator, runner, fetch_image, fake_repos
+    generator, runner, fetch_image, bg_uow
 ):
-    image_repo, task_repo, blob_repo = fake_repos
+    img = _image()
+    task = _task()
     fetch_image.side_effect = RuntimeError("network down")
-    image_repo.find_by_id.return_value = _image()
-    task_repo.find_by_id.return_value = _task()
+    bg_uow.t2i_images.find_by_id.return_value = img
+    bg_uow.t2i_tasks.find_by_id.return_value = task
 
     generator.spawn("task-1", "img-1", "a cute cat")
     await runner.captured
 
-    blob_repo.save.assert_not_called()
-    img_arg = image_repo.update.call_args.args[0]
-    assert img_arg.status == "failed"
-    task_arg = task_repo.update.call_args.args[0]
-    assert task_arg.status == "failed"
+    bg_uow.t2i_blobs.add.assert_not_called()
+    assert img.status == "failed"
+    assert task.status == "failed"
 
 
 @pytest.mark.asyncio
-async def test_run_image_missing_is_noop(generator, runner, fake_repos):
-    image_repo, task_repo, blob_repo = fake_repos
-    image_repo.find_by_id.return_value = None
+async def test_run_image_missing_is_noop(generator, runner, bg_uow):
+    bg_uow.t2i_images.find_by_id.return_value = None
 
     generator.spawn("task-1", "img-1", "a cute cat")
     await runner.captured
 
-    image_repo.update.assert_not_called()
-    blob_repo.save.assert_not_called()
+    bg_uow.t2i_blobs.add.assert_not_called()
+    bg_uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_mark_failed_task_missing_is_noop(generator, runner, ai, fake_repos):
-    image_repo, task_repo, _ = fake_repos
+async def test_mark_failed_task_missing_is_noop(generator, runner, ai, bg_uow):
+    img = _image()
     ai.generate_image.side_effect = RuntimeError("boom")
-    image_repo.find_by_id.return_value = _image()
-    task_repo.find_by_id.return_value = None
+    bg_uow.t2i_images.find_by_id.return_value = img
+    bg_uow.t2i_tasks.find_by_id.return_value = None
 
     generator.spawn("task-1", "img-1", "a cute cat")
     await runner.captured
 
-    image_repo.update.assert_awaited_once()
-    task_repo.update.assert_not_called()
+    # 任务记录已不在，图片状态仍要落库
+    assert img.status == "failed"
+    assert bg_uow.commit.await_count == 1

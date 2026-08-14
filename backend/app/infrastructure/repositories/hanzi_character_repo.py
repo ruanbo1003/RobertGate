@@ -1,32 +1,23 @@
-from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 
 from app.domain.models.hanzi import HanziCharacter
+from app.infrastructure.repositories.base import SqlRepo
 
 
-class HanziCharacterRepo:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+class HanziCharacterRepo(SqlRepo[HanziCharacter]):
+    model = HanziCharacter
 
     async def list_by_level(self, level_id: str) -> list[HanziCharacter]:
-        result = await self.session.execute(
+        return await self._all(
             select(HanziCharacter)
             .where(HanziCharacter.level_id == level_id)
             .order_by(HanziCharacter.order_index.asc())
         )
-        return list(result.scalars().all())
-
-    async def find_by_id(self, character_id: str) -> HanziCharacter | None:
-        result = await self.session.execute(
-            select(HanziCharacter).where(HanziCharacter.id == character_id)
-        )
-        return result.scalar_one_or_none()
 
     async def find_by_char(self, char: str) -> HanziCharacter | None:
-        result = await self.session.execute(
+        return await self._one(
             select(HanziCharacter).where(HanziCharacter.char == char)
         )
-        return result.scalar_one_or_none()
 
     async def existing_chars(self, chars: list[str]) -> set[str]:
         if not chars:
@@ -37,12 +28,11 @@ class HanziCharacterRepo:
         return {c for c in result.scalars().all()}
 
     async def count_by_level(self, level_id: str) -> int:
-        result = await self.session.execute(
+        return await self._count(
             select(func.count(HanziCharacter.id)).where(
                 HanziCharacter.level_id == level_id
             )
         )
-        return int(result.scalar_one() or 0)
 
     async def count_by_levels(self, level_ids: list[str]) -> dict[str, int]:
         if not level_ids:
@@ -63,19 +53,7 @@ class HanziCharacterRepo:
         value = result.scalar_one()
         return int(value) if value is not None else -1
 
-    async def save(self, character: HanziCharacter) -> None:
-        self.session.add(character)
-        await self.session.commit()
-
-    async def save_many(self, characters: list[HanziCharacter]) -> None:
+    def add_many(self, characters: list[HanziCharacter]) -> None:
         if not characters:
             return
         self.session.add_all(characters)
-        await self.session.commit()
-
-    async def update(self, character: HanziCharacter) -> None:
-        await self.session.commit()
-
-    async def delete(self, character: HanziCharacter) -> None:
-        await self.session.delete(character)
-        await self.session.commit()

@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock
-
 import pytest
 
 from app.application.services.auth_service import AuthService
@@ -8,13 +6,13 @@ from app.domain.models.user import User
 
 
 @pytest.fixture
-def user_repo():
-    return AsyncMock()
+def user_repo(uow):
+    return uow.users
 
 
 @pytest.fixture
-def auth_service(user_repo):
-    return AuthService(user_repo=user_repo)
+def auth_service(uow):
+    return AuthService(uow=uow)
 
 
 def _make_user(username="testuser", email="test@example.com", password="pass1234"):
@@ -32,16 +30,26 @@ def _make_user(username="testuser", email="test@example.com", password="pass1234
 
 
 @pytest.mark.asyncio
-async def test_register_success(auth_service, user_repo):
+async def test_register_success(auth_service, uow, user_repo):
     user_repo.find_by_username.return_value = None
     user_repo.find_by_email.return_value = None
-    user_repo.save.return_value = None
 
     result = await auth_service.register("newuser", "new@example.com", "pass1234")
 
     assert result["access_token"]
     assert result["user"]["username"] == "newuser"
-    user_repo.save.assert_called_once()
+    user_repo.add.assert_called_once()
+    # 写用例事务边界：恰好提交一次
+    assert uow.commit.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_register_duplicate_does_not_commit(auth_service, uow, user_repo):
+    user_repo.find_by_username.return_value = _make_user()
+
+    with pytest.raises(AuthException):
+        await auth_service.register("taken", "new@example.com", "pass1234")
+    uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
