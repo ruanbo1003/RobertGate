@@ -49,11 +49,9 @@ async def get_current_user_id(
 
 async def require_admin(
     user_id: str = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
+    auth: AuthService = Depends(get_auth_service),
 ) -> str:
-    user = await UserRepo(db).find_by_id(user_id)
-    if not user or user.role != "admin":
-        raise AuthException(1002, "无权限")
+    await auth.ensure_admin(user_id)
     return user_id
 
 

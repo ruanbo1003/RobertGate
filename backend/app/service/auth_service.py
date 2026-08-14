@@ -106,3 +106,8 @@ class AuthService:
 
     async def check_email(self, email: str) -> bool:
         return await self.user_repo.find_by_email(email) is None
+
+    async def ensure_admin(self, user_id: str) -> None:
+        user = await self.user_repo.find_by_id(user_id)
+        if not user or user.role != "admin":
+            raise AuthException(1002, "无权限")
