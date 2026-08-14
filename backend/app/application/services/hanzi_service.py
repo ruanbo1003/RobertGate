@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.application.ports import AIClient
 from app.domain.errors import ParamException
@@ -90,19 +89,13 @@ class HanziService:
                     "learned": True,
                     "learned_at": _iso(existing.learned_at),
                 }
-            now = datetime.now(timezone.utc)
-            progress = HanziUserProgress(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                character_id=character_id,
-                learned_at=now,
-            )
+            progress = HanziUserProgress.new(user_id, character_id)
             self.uow.hanzi_progress.add(progress)
             await self.uow.commit()
             return {
                 "character_id": character_id,
                 "learned": True,
-                "learned_at": _iso(now),
+                "learned_at": _iso(progress.learned_at),
             }
 
         if existing:

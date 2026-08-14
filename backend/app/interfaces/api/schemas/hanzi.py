@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import re
-
 from pydantic import BaseModel, field_validator
 
-HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")
+from app.domain.models.hanzi import HANZI_RE, clean_example_words
 
 MAX_NAME_LEN = 64
 MAX_DESC_LEN = 500
 MAX_PINYIN_LEN = 32
-MAX_EXAMPLE_WORDS = 20
-MAX_EXAMPLE_WORD_LEN = 16
 MAX_AI_ADD_TEXT_LEN = 2000
 
 
@@ -19,24 +15,6 @@ def _strip_or_none(v: str | None) -> str | None:
         return None
     v = v.strip()
     return v if v else None
-
-
-def _validate_example_words(v: list[str] | None) -> list[str] | None:
-    if v is None:
-        return None
-    cleaned: list[str] = []
-    for w in v:
-        if not isinstance(w, str):
-            raise ValueError("example_words 每项必须是字符串")
-        w = w.strip()
-        if not w:
-            continue
-        if len(w) > MAX_EXAMPLE_WORD_LEN:
-            raise ValueError(f"example_words 单项超过 {MAX_EXAMPLE_WORD_LEN} 字符")
-        cleaned.append(w)
-    if len(cleaned) > MAX_EXAMPLE_WORDS:
-        raise ValueError(f"example_words 上限 {MAX_EXAMPLE_WORDS} 条")
-    return cleaned
 
 
 # ---------- User side ----------
@@ -149,7 +127,7 @@ class CharacterCreateRequest(BaseModel):
     @field_validator("example_words")
     @classmethod
     def _v_words(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_example_words(v)
+        return clean_example_words(v)
 
     @field_validator("order_index")
     @classmethod
@@ -194,7 +172,7 @@ class CharacterUpdateRequest(BaseModel):
     @field_validator("example_words")
     @classmethod
     def _v_words(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_example_words(v)
+        return clean_example_words(v)
 
     @field_validator("order_index")
     @classmethod

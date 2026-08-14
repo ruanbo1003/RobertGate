@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import re
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.application.ports import AIClient
 from app.domain.errors import ParamException
-from app.domain.models.hanzi import HanziCharacter, HanziLevel
+from app.domain.models.hanzi import HanziCharacter, HanziLevel, extract_hanzi
 from app.domain.repositories.uow import UnitOfWork
 
-HANZI_RE = re.compile(r"^[\u4e00-\u9fa5]$")
-HANZI_EXTRACT_RE = re.compile(r"[\u4e00-\u9fa5]")
 AI_CONCURRENCY = 5
 
 
@@ -43,17 +39,6 @@ def _character_dict(c: HanziCharacter) -> dict:
     }
 
 
-def _extract_chars(text: str) -> list[str]:
-    """从任意文本抽取汉字，按出现顺序去重。"""
-    seen: set[str] = set()
-    result: list[str] = []
-    for ch in HANZI_EXTRACT_RE.findall(text):
-        if ch not in seen:
-            seen.add(ch)
-            result.append(ch)
-    return result
-
-
 class AdminHanziService:
     def __init__(self, uow: UnitOfWork, ai: AIClient) -> None:
         self.uow = uow
@@ -74,15 +59,7 @@ class AdminHanziService:
         if await self.uow.hanzi_levels.find_by_name(name):
             raise ParamException(2011, "级别名称已存在")
 
-        now = datetime.now(timezone.utc)
-        level = HanziLevel(
-            id=str(uuid.uuid4()),
-            name=name,
-            description=description,
-            order_index=order_index,
-            created_at=now,
-            updated_at=now,
-        )
+        level = HanziLevel.new(name, description, order_index)
         self.uow.hanzi_levels.add(level)
         await self.uow.commit()
         return _level_dict(level, 0)
@@ -111,7 +88,7 @@ class AdminHanziService:
         if order_index is not None:
             level.order_index = order_index
 
-        level.updated_at = datetime.now(timezone.utc)
+        level.touch()
         await self.uow.commit()
 
         total = await self.uow.hanzi_characters.count_by_level(level_id)
@@ -164,16 +141,8 @@ class AdminHanziService:
         if order_index is None:
             order_index = await self.uow.hanzi_characters.max_order_index(level_id) + 1
 
-        now = datetime.now(timezone.utc)
-        character = HanziCharacter(
-            id=str(uuid.uuid4()),
-            level_id=level_id,
-            char=char,
-            pinyin=pinyin,
-            example_words=example_words or [],
-            order_index=order_index,
-            created_at=now,
-            updated_at=now,
+        character = HanziCharacter.new(
+            level_id, char, pinyin, example_words, order_index
         )
         self.uow.hanzi_characters.add(character)
         await self.uow.commit()
@@ -185,7 +154,7 @@ class AdminHanziService:
         if not level:
             raise ParamException(2010, "级别不存在")
 
-        chars = _extract_chars(text)
+        chars = extract_hanzi(text)
         if not chars:
             return {"ok": 0, "added": [], "skipped": [], "failed": []}
 
@@ -210,7 +179,6 @@ class AdminHanziService:
         failed: list[dict] = []
         to_insert: list[HanziCharacter] = []
         next_order = await self.uow.hanzi_characters.max_order_index(level_id) + 1
-        now = datetime.now(timezone.utc)
 
         for char, info in results:
             if isinstance(info, Exception):
@@ -222,15 +190,8 @@ class AdminHanziService:
             if not pinyin or not words:
                 failed.append({"char": char, "reason": "AI 返回格式不完整"})
                 continue
-            character = HanziCharacter(
-                id=str(uuid.uuid4()),
-                level_id=level_id,
-                char=char,
-                pinyin=pinyin,
-                example_words=words,
-                order_index=next_order,
-                created_at=now,
-                updated_at=now,
+            character = HanziCharacter.new(
+                level_id, char, pinyin, words, next_order
             )
             to_insert.append(character)
             added.append(_character_dict(character))
@@ -275,7 +236,7 @@ class AdminHanziService:
         if order_index is not None:
             character.order_index = order_index
 
-        character.updated_at = datetime.now(timezone.utc)
+        character.touch()
         await self.uow.commit()
         return _character_dict(character)
 

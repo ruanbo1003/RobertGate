@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
 
 import httpx
 
@@ -68,15 +67,12 @@ class T2IGenerator:
             img = await uow.t2i_images.find_by_id(image_id)
             if img is None:
                 return
-            img.status = "succeeded"
-            img.mime = mime
+            img.mark_succeeded(mime)
             uow.t2i_blobs.add(T2IImageBlob(image_id=image_id, bytes_=payload))
 
             task = await uow.t2i_tasks.find_by_id(task_id)
             if task is not None:
-                task.status = "succeeded"
-                task.last_failed = False
-                task.updated_at = datetime.now(timezone.utc)
+                task.mark_succeeded()
 
             await uow.commit()
 
@@ -85,12 +81,10 @@ class T2IGenerator:
             img = await uow.t2i_images.find_by_id(image_id)
             if img is None:
                 return
-            img.status = "failed"
+            img.mark_failed()
 
             task = await uow.t2i_tasks.find_by_id(task_id)
             if task is not None:
-                task.status = "failed"
-                task.last_failed = True
-                task.updated_at = datetime.now(timezone.utc)
+                task.mark_failed()
 
             await uow.commit()

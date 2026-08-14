@@ -6,23 +6,20 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
-import re
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from app.application.ports import AIClient
 from app.application.services.t2i_generation import T2IGenerator
 from app.domain.errors import ParamException
-from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
+from app.domain.models.t2i import (
+    T2IImage,
+    T2ITask,
+    T2ITemplate,
+    business_status,
+    normalize_keywords,
+)
 from app.domain.repositories.uow import UnitOfWork
-
-
-ITEM_MAX_LENGTH = 100
-CODE_RE = re.compile(r"^[a-z][a-z0-9-]{1,63}$")
-ITEM_PLACEHOLDER = "{{item}}"
 
 
 # ---------- 工具函数 ----------
@@ -30,37 +27,6 @@ ITEM_PLACEHOLDER = "{{item}}"
 
 def _iso(dt: datetime) -> str:
     return dt.isoformat()
-
-
-def _canonical_hash(template_code: str, keywords: dict[str, str]) -> str:
-    canonical = json.dumps(
-        keywords, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-    )
-    payload = f"{template_code}|{canonical}"
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _normalize_item(raw: dict[str, Any]) -> dict[str, str]:
-    """校验并规范化任务关键词。单变量 `item`。"""
-    value = raw.get("item")
-    if value is None:
-        raise ParamException(2022, "item 不能为空")
-    if not isinstance(value, str):
-        raise ParamException(2022, "item 必须是字符串")
-    value = value.strip()
-    if not value:
-        raise ParamException(2022, "item 不能为空")
-    if len(value) > ITEM_MAX_LENGTH:
-        raise ParamException(2022, f"item 超长（最大 {ITEM_MAX_LENGTH} 字符）")
-    return {"item": value}
-
-
-def _build_prompt(template_prompt: str, keywords: dict[str, str]) -> str:
-    return template_prompt.replace(ITEM_PLACEHOLDER, keywords["item"])
-
-
-def _business_status(images: list[T2IImage]) -> str:
-    return "done" if any(i.available for i in images) else "pending"
 
 
 def _template_dict(t: T2ITemplate) -> dict:
@@ -89,7 +55,7 @@ def _task_summary_dict(task: T2ITask, images: list[T2IImage]) -> dict:
         "keywords": task.keywords,
         "summary": task.keywords.get("item", ""),
         "status": status,
-        "business_status": _business_status(images),
+        "business_status": business_status(images),
         "images_total": len(succeeded) + len(generating),
         "images_available": len(available),
         "last_failed": task.last_failed,
@@ -137,39 +103,12 @@ class T2ITaskService:
         prompt: str,
         order_index: int | None,
     ) -> dict:
-        code = (code or "").strip().lower()
-        name = (name or "").strip()
-        prompt = (prompt or "").strip()
+        tpl = T2ITemplate.create(code, name, description, prompt, order_index)
 
-        if not CODE_RE.match(code):
-            raise ParamException(
-                2030, "code 只允许小写字母/数字/连字符，须以字母开头，长度 2-64"
-            )
-        if not name:
-            raise ParamException(2031, "name 不能为空")
-        if len(name) > 64:
-            raise ParamException(2031, "name 超长（最大 64 字符）")
-        if not prompt:
-            raise ParamException(2032, "prompt 不能为空")
-        if ITEM_PLACEHOLDER not in prompt:
-            raise ParamException(2032, f"prompt 必须包含占位符 {ITEM_PLACEHOLDER}")
-
-        existing = await self.uow.t2i_templates.find_by_code(code)
+        existing = await self.uow.t2i_templates.find_by_code(tpl.code)
         if existing is not None:
             raise ParamException(2033, "code 已存在")
 
-        now = datetime.now(timezone.utc)
-        tpl = T2ITemplate(
-            id=str(uuid.uuid4()),
-            code=code,
-            name=name,
-            description=(description or None),
-            prompt=prompt,
-            order_index=order_index if order_index is not None else 0,
-            is_builtin=False,
-            created_at=now,
-            updated_at=now,
-        )
         self.uow.t2i_templates.add(tpl)
         await self.uow.commit()
         return _template_dict(tpl)
@@ -185,26 +124,9 @@ class T2ITaskService:
         tpl = await self.uow.t2i_templates.find_by_id(template_id)
         if tpl is None:
             raise ParamException(2034, "模板不存在")
-        if tpl.is_builtin:
-            raise ParamException(2035, "内置模板不可修改")
+        tpl.ensure_editable()
 
-        name = (name or "").strip()
-        prompt = (prompt or "").strip()
-        if not name:
-            raise ParamException(2031, "name 不能为空")
-        if len(name) > 64:
-            raise ParamException(2031, "name 超长（最大 64 字符）")
-        if not prompt:
-            raise ParamException(2032, "prompt 不能为空")
-        if ITEM_PLACEHOLDER not in prompt:
-            raise ParamException(2032, f"prompt 必须包含占位符 {ITEM_PLACEHOLDER}")
-
-        tpl.name = name
-        tpl.description = (description or "").strip() or None
-        tpl.prompt = prompt
-        if order_index is not None:
-            tpl.order_index = order_index
-        tpl.updated_at = datetime.now(timezone.utc)
+        tpl.apply_update(name, description, prompt, order_index)
         await self.uow.commit()
         return _template_dict(tpl)
 
@@ -212,8 +134,7 @@ class T2ITaskService:
         tpl = await self.uow.t2i_templates.find_by_id(template_id)
         if tpl is None:
             raise ParamException(2034, "模板不存在")
-        if tpl.is_builtin:
-            raise ParamException(2035, "内置模板不可删除")
+        tpl.ensure_deletable()
 
         used = await self.uow.t2i_tasks.count_by_template_code(tpl.code)
         if used > 0:
@@ -257,41 +178,24 @@ class T2ITaskService:
         if tpl is None:
             raise ParamException(2020, "template_code 不存在")
 
-        keywords = _normalize_item(raw_keywords)
-        h = _canonical_hash(template_code, keywords)
+        keywords = normalize_keywords(raw_keywords)
+        h = T2ITask.compute_hash(template_code, keywords)
 
         existing = await self.uow.t2i_tasks.find_by_hash(h)
         if existing is not None:
-            existing.updated_at = datetime.now(timezone.utc)
+            existing.touch()
             await self.uow.commit()
             imgs = await self.uow.t2i_images.list_by_task(existing.id)
             return {"existing": True, "task": _task_summary_dict(existing, imgs)}
 
-        now = datetime.now(timezone.utc)
-        task = T2ITask(
-            id=str(uuid.uuid4()),
-            template_code=template_code,
-            keywords=keywords,
-            keywords_hash=h,
-            status="generating",
-            last_failed=False,
-            created_at=now,
-            updated_at=now,
-        )
+        task = T2ITask.create(template_code, keywords)
         self.uow.t2i_tasks.add(task)
 
-        image = T2IImage(
-            id=str(uuid.uuid4()),
-            task_id=task.id,
-            status="generating",
-            available=False,
-            mime=None,
-            created_at=now,
-        )
+        image = T2IImage.create(task.id)
         self.uow.t2i_images.add(image)
         await self.uow.commit()
 
-        prompt = _build_prompt(tpl.prompt, keywords)
+        prompt = tpl.render_prompt(keywords)
         self.generator.spawn(task.id, image.id, prompt)
 
         return {"existing": False, "task": _task_summary_dict(task, [image])}
@@ -319,22 +223,13 @@ class T2ITaskService:
         if tpl is None:
             raise ParamException(2020, "任务所属模板已删除")
 
-        now = datetime.now(timezone.utc)
-        image = T2IImage(
-            id=str(uuid.uuid4()),
-            task_id=task_id,
-            status="generating",
-            available=False,
-            mime=None,
-            created_at=now,
-        )
+        image = T2IImage.create(task_id)
         self.uow.t2i_images.add(image)
 
-        task.status = "generating"
-        task.updated_at = now
+        task.mark_generating()
         await self.uow.commit()
 
-        prompt = _build_prompt(tpl.prompt, task.keywords)
+        prompt = tpl.render_prompt(task.keywords)
         self.generator.spawn(task_id, image.id, prompt)
 
         return {"image": _image_dict(image)}
@@ -345,14 +240,11 @@ class T2ITaskService:
         image = await self.uow.t2i_images.find_by_id(image_id)
         if image is None:
             raise ParamException(2025, "图片不存在")
-        if image.status != "succeeded":
-            raise ParamException(2026, "只有已生成的图片可以标记")
-
-        image.available = available
+        image.set_available(available)
 
         task = await self.uow.t2i_tasks.find_by_id(image.task_id)
         if task is not None:
-            task.updated_at = datetime.now(timezone.utc)
+            task.touch()
         await self.uow.commit()
 
         siblings = await self.uow.t2i_images.list_by_task(image.task_id)
@@ -360,15 +252,14 @@ class T2ITaskService:
             "id": image.id,
             "available": image.available,
             "task_id": image.task_id,
-            "task_business_status": _business_status(siblings),
+            "task_business_status": business_status(siblings),
         }
 
     async def delete_image(self, image_id: str) -> dict:
         image = await self.uow.t2i_images.find_by_id(image_id)
         if image is None:
             raise ParamException(2025, "图片不存在")
-        if image.available:
-            raise ParamException(2027, "可用图片不可删除，请先取消可用")
+        image.ensure_deletable()
 
         task_id = image.task_id
         await self.uow.t2i_blobs.delete_by_image(image_id)
@@ -376,7 +267,7 @@ class T2ITaskService:
 
         task = await self.uow.t2i_tasks.find_by_id(task_id)
         if task is not None:
-            task.updated_at = datetime.now(timezone.utc)
+            task.touch()
         await self.uow.commit()
 
         siblings = await self.uow.t2i_images.list_by_task(task_id)
@@ -387,7 +278,7 @@ class T2ITaskService:
             "task_id": task_id,
             "images_total": len(siblings),
             "images_available": len(available),
-            "task_business_status": _business_status(siblings),
+            "task_business_status": business_status(siblings),
         }
 
     async def get_image_bytes(self, image_id: str) -> tuple[bytes, str] | None:

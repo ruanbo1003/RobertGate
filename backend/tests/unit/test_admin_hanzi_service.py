@@ -3,9 +3,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.application.services.admin_hanzi_service import AdminHanziService, _extract_chars
+from app.application.services.admin_hanzi_service import AdminHanziService
 from app.domain.errors import ParamException
-from app.domain.models.hanzi import HanziCharacter, HanziLevel
+from app.domain.models.hanzi import HanziCharacter, HanziLevel, extract_hanzi
 
 
 @pytest.fixture
@@ -44,16 +44,7 @@ def _character(id_: str, char: str, level_id: str = "l1") -> HanziCharacter:
     )
 
 
-# ---------- Extract ----------
-
-
-def test_extract_chars_dedup_ordered():
-    assert _extract_chars("你好世界，Hello 好！") == ["你", "好", "世", "界"]
-
-
-def test_extract_chars_empty():
-    assert _extract_chars("no chinese here 123") == []
-
+# extract_hanzi 已迁入 domain，见 tests/unit/test_domain_hanzi.py。
 
 # ---------- Levels ----------
 

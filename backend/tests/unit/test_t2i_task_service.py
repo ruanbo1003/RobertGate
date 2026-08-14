@@ -5,12 +5,7 @@ import pytest
 
 from app.domain.errors import ParamException
 from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.application.services.t2i_task_service import (
-    T2ITaskService,
-    _build_prompt,
-    _canonical_hash,
-    _normalize_item,
-)
+from app.application.services.t2i_task_service import T2ITaskService
 
 
 class FakeGenerator:
@@ -93,7 +88,7 @@ def _task(
         id=id_,
         template_code=template_code,
         keywords=kw,
-        keywords_hash=_canonical_hash(template_code, kw),
+        keywords_hash=T2ITask.compute_hash(template_code, kw),
         status="generating",
         last_failed=False,
         created_at=now,
@@ -117,60 +112,8 @@ def _image(
     )
 
 
-# ---------- item normalization ----------
-
-
-def test_normalize_item_trims():
-    assert _normalize_item({"item": "  Apple "}) == {"item": "Apple"}
-
-
-def test_normalize_item_missing():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_empty_string():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": "   "})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_non_string():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": 123})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_too_long():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": "x" * 101})
-    assert exc.value.code == 2022
-
-
-# ---------- canonical hash + prompt ----------
-
-
-def test_canonical_hash_deterministic():
-    assert _canonical_hash("english-primer", {"item": "apple"}) == _canonical_hash(
-        "english-primer", {"item": "apple"}
-    )
-
-
-def test_canonical_hash_template_scoped():
-    a = _canonical_hash("english-primer", {"item": "apple"})
-    b = _canonical_hash("general", {"item": "apple"})
-    assert a != b
-
-
-def test_build_prompt_replaces_placeholder():
-    out = _build_prompt("cute {{item}} illustration", {"item": "apple"})
-    assert out == "cute apple illustration"
-
-
-def test_build_prompt_no_placeholder_passthrough():
-    out = _build_prompt("static prompt with no vars", {"item": "apple"})
-    assert out == "static prompt with no vars"
+# item 规范化 / hash / prompt 渲染的纯逻辑已迁入 domain，
+# 见 tests/unit/test_domain_t2i.py。
 
 
 # ---------- list_templates ----------
