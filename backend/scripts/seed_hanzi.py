@@ -16,8 +16,8 @@ from sqlalchemy import select
 
 from app.domain.models.hanzi import HanziCharacter, HanziLevel
 from app.domain.models.user import User
-from app.application.services.auth_service import AuthService
 from app.infrastructure.database.session import async_session
+from app.infrastructure.security.password import BcryptHasher
 
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "admin@example.com"
@@ -59,7 +59,7 @@ async def ensure_admin() -> str:
             id=str(uuid.uuid4()),
             username=ADMIN_USERNAME,
             email=ADMIN_EMAIL,
-            hashed_password=AuthService.hash_password(ADMIN_PASSWORD),
+            hashed_password=BcryptHasher().hash(ADMIN_PASSWORD),
             role="admin",
             created_at=datetime.now(timezone.utc),
         )

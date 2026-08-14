@@ -9,13 +9,23 @@ from app.application.services.t2i_task_service import T2ITaskService
 
 
 class FakeGenerator:
-    """记录 spawn 调用，不真正跑后台生成——隔离 T2IGenerator 的实现细节。"""
+    """记录 spawn 调用，不真正跑后台生成——隔离 T2IGenerator 的实现细节。
 
-    def __init__(self):
+    额外记两件事，用来锁**顺序**不变量：spawn 当时的 commit 次数，以及往
+    uow 的事件日志里插一条 "spawn"。后台任务是另开 session 按 id 重查的，
+    commit 必须已经发生在 spawn 之前，否则线上会读不到行。
+    """
+
+    def __init__(self, uow=None):
         self.calls: list[tuple[str, str, str]] = []
+        self.commit_count_at_spawn: list[int] = []
+        self._uow = uow
 
     def spawn(self, task_id: str, image_id: str, prompt: str) -> None:
         self.calls.append((task_id, image_id, prompt))
+        if self._uow is not None:
+            self.commit_count_at_spawn.append(self._uow.commit.await_count)
+            self._uow.calls.append("spawn")
 
 
 @pytest.fixture
@@ -44,8 +54,8 @@ def ai():
 
 
 @pytest.fixture
-def generator():
-    return FakeGenerator()
+def generator(uow):
+    return FakeGenerator(uow)
 
 
 @pytest.fixture
@@ -343,10 +353,19 @@ async def test_create_task_new(
     assert out["task"]["status"] == "generating"
     task_repo.add.assert_called_once()
     image_repo.add.assert_called_once()
-    # 任务 + 图片同一事务，且必须在 spawn 之前提交（后台任务另开 session 按 id 重查）
-    assert uow.commit.await_count == 1
-    # 外键定序：任务先落到 DB，图片才能插（两者之间没有 relationship）
-    assert uow.flush.await_count == 1
+    # 顺序不变量，逐位锁死（只断言次数的话，把 commit 挪到 spawn 之后照样绿）：
+    #   1. add(task) 先于 flush —— flush 是给外键定序用的
+    #   2. flush 先于 add(image) —— 两个模型之间没有 relationship()，同一次
+    #      flush 里 SQLAlchemy 不保证先插父行，必须显式定序
+    #   3. commit 先于 spawn —— 后台任务另开 session 按 id 重查，晚提交会读不到行
+    assert uow.calls == [
+        "t2i_tasks.add",
+        "flush",
+        "t2i_images.add",
+        "commit",
+        "spawn",
+    ]
+    assert generator.commit_count_at_spawn == [1]
 
     # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
     assert len(generator.calls) == 1
@@ -428,7 +447,10 @@ async def test_retry_task_success(
     assert out["image"]["status"] == "generating"
     image_repo.add.assert_called_once()
     assert task.status == "generating"
-    assert uow.commit.await_count == 1
+    # 顺序不变量：图片入库并提交之后才排队生成（同上，spawn 后的 commit 会导致
+    # 后台任务读不到图片行）。retry 复用已存在的 task 行，不需要 flush 定序。
+    assert uow.calls == ["t2i_images.add", "commit", "spawn"]
+    assert generator.commit_count_at_spawn == [1]
 
     assert len(generator.calls) == 1
     spawned_task_id, spawned_image_id, _ = generator.calls[0]
@@ -468,7 +490,10 @@ async def test_patch_image_flip(service, uow, task_repo, image_repo):
     assert img.available is True
     assert out["task_business_status"] == "done"
     # 原实现在这里连续 commit 两次；合并为一次（原子性修复，对外行为不变）
-    assert uow.commit.await_count == 1
+    assert uow.calls == ["commit"]
+    # 且 commit 必须早于回读 siblings（原实现也是先提交再查）
+    assert uow.commit.await_args_list  # 已 await
+    image_repo.list_by_task.assert_awaited_once()
 
 
 # ---------- delete_image ----------
@@ -502,7 +527,9 @@ async def test_delete_image_success(service, uow, task_repo, image_repo, blob_re
     image_repo.delete.assert_awaited_once_with(img)
     assert out["images_total"] == 0
     assert out["task_business_status"] == "pending"
-    assert uow.commit.await_count == 1
+    # 原实现三次 commit（blob / image / task）；合并成一次，且顺序不变：
+    # 先删 blob 再删 image（外键方向），最后一次提交
+    assert uow.calls == ["t2i_images.delete", "commit"]
 
 
 # ---------- get_image_bytes ----------
