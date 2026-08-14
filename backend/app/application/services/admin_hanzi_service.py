@@ -43,6 +43,7 @@ class AdminHanziService:
     async def update_level(
         self,
         level_id: str,
+        *,
         name: str | None,
         description: Any = UNSET,
         order_index: int | None = None,
@@ -191,6 +192,7 @@ class AdminHanziService:
     async def update_character(
         self,
         character_id: str,
+        *,
         char: str | None,
         pinyin: str | None,
         example_words: Any = UNSET,

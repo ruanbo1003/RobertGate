@@ -71,7 +71,7 @@ async def test_create_level_duplicate_name(service, level_repo):
 async def test_update_level_not_found(service, level_repo):
     level_repo.find_by_id.return_value = None
     with pytest.raises(ParamException) as exc:
-        await service.update_level("nope", "n", None, None)
+        await service.update_level("nope", name="n", description=None, order_index=None)
     assert exc.value.code == 2010
 
 
@@ -80,7 +80,7 @@ async def test_update_level_name_conflict(service, level_repo):
     level_repo.find_by_id.return_value = _level("l1", "old")
     level_repo.find_by_name.return_value = _level("l2", "taken")
     with pytest.raises(ParamException) as exc:
-        await service.update_level("l1", "taken", None, None)
+        await service.update_level("l1", name="taken", description=None, order_index=None)
     assert exc.value.code == 2011
 
 

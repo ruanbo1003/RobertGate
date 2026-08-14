@@ -2,6 +2,7 @@
 
 Usage (from backend/):
     uv run python -m scripts.seed_hanzi
+    uv run python scripts/seed_hanzi.py
 
 Idempotent: re-running only inserts what's missing.
 """
@@ -9,15 +10,20 @@ Idempotent: re-running only inserts what's missing.
 from __future__ import annotations
 
 import asyncio
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import select
+# 让脚本能直接用 `python scripts/seed_hanzi.py` 运行（而非只能 -m）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.domain.models.hanzi import HanziCharacter, HanziLevel
-from app.domain.models.user import User
-from app.infrastructure.database.session import async_session
-from app.infrastructure.security.password import BcryptHasher
+from sqlalchemy import select  # noqa: E402
+
+from app.domain.models.hanzi import HanziCharacter, HanziLevel  # noqa: E402
+from app.domain.models.user import User  # noqa: E402
+from app.infrastructure.database.session import async_session  # noqa: E402
+from app.infrastructure.security.password import BcryptHasher  # noqa: E402
 
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "admin@example.com"

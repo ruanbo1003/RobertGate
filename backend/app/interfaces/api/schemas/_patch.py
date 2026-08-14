@@ -17,4 +17,6 @@ from app.application.dto.base import UNSET
 
 class PatchModel(BaseModel):
     def value_or_unset(self, field: str) -> Any:
+        if field not in type(self).model_fields:
+            raise AttributeError(field)
         return getattr(self, field) if field in self.model_fields_set else UNSET

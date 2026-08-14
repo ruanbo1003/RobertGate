@@ -20,7 +20,9 @@ IsoDt = Annotated[
 ]
 IsoDtOpt = Annotated[
     datetime | None,
-    PlainSerializer(lambda dt: dt.isoformat() if dt else None, return_type=str | None),
+    PlainSerializer(
+        lambda dt: dt.isoformat() if dt is not None else None, return_type=str | None
+    ),
 ]
 
 

@@ -52,8 +52,8 @@ class GalleryService:
                 key=lambda f: f.stat().st_mtime,
                 reverse=True,
             )
-        except OSError:
-            raise ServerException(codes.PHOTO_DIR_UNREADABLE, "照片目录读取失败")
+        except OSError as e:
+            raise ServerException(codes.PHOTO_DIR_UNREADABLE, "照片目录读取失败") from e
 
         photos: list[PhotoOut] = []
         for f in files:
