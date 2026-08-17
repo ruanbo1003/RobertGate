@@ -2,6 +2,7 @@
 
 Usage (from backend/):
     uv run python -m scripts.seed_hanzi
+    uv run python scripts/seed_hanzi.py
 
 Idempotent: re-running only inserts what's missing.
 """
@@ -9,16 +10,20 @@ Idempotent: re-running only inserts what's missing.
 from __future__ import annotations
 
 import asyncio
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
-from sqlalchemy import select
+# 让脚本能直接用 `python scripts/seed_hanzi.py` 运行（而非只能 -m）
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.core.database import async_session
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.models.user import User
-from app.service.auth_service import AuthService
+from sqlalchemy import select  # noqa: E402
+
+from app.domain.models.hanzi import HanziCharacter, HanziLevel  # noqa: E402
+from app.domain.models.user import User  # noqa: E402
+from app.infrastructure.database.session import async_session  # noqa: E402
+from app.infrastructure.security.password import BcryptHasher  # noqa: E402
 
 ADMIN_USERNAME = "admin"
 ADMIN_EMAIL = "admin@example.com"
@@ -60,7 +65,7 @@ async def ensure_admin() -> str:
             id=str(uuid.uuid4()),
             username=ADMIN_USERNAME,
             email=ADMIN_EMAIL,
-            hashed_password=AuthService.hash_password(ADMIN_PASSWORD),
+            hashed_password=BcryptHasher().hash(ADMIN_PASSWORD),
             role="admin",
             created_at=datetime.now(timezone.utc),
         )

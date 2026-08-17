@@ -3,26 +3,24 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.models.hanzi_progress import HanziUserProgress
-from app.service.hanzi_service import HanziService
+from app.application.services.hanzi_service import HanziService
+from app.domain.errors import ParamException
+from app.domain.models.hanzi import HanziCharacter, HanziLevel, HanziUserProgress
 
 
 @pytest.fixture
-def level_repo():
-    return AsyncMock()
+def level_repo(uow):
+    return uow.hanzi_levels
 
 
 @pytest.fixture
-def character_repo():
-    return AsyncMock()
+def character_repo(uow):
+    return uow.hanzi_characters
 
 
 @pytest.fixture
-def progress_repo():
-    return AsyncMock()
+def progress_repo(uow):
+    return uow.hanzi_progress
 
 
 @pytest.fixture
@@ -31,13 +29,8 @@ def ai():
 
 
 @pytest.fixture
-def service(level_repo, character_repo, progress_repo, ai):
-    return HanziService(
-        level_repo=level_repo,
-        character_repo=character_repo,
-        progress_repo=progress_repo,
-        ai=ai,
-    )
+def service(uow, ai):
+    return HanziService(uow=uow, ai=ai)
 
 
 def _lvl(id_: str = "l1") -> HanziLevel:

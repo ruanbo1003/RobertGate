@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.ai_tools import (
+from app.interfaces.api.schemas.ai_tools import (
     QuizRequest,
     Text2ImageRequest,
     TextRequest,

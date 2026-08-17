@@ -4,15 +4,13 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.core.setting import get_settings
-from app.core.database import Base
+from app.config import get_settings
+from app.domain.models.base import Base
 
 # Import all models so Alembic sees them
-from app.models.user import User  # noqa: F401
-from app.models.hanzi_level import HanziLevel  # noqa: F401
-from app.models.hanzi_character import HanziCharacter  # noqa: F401
-from app.models.hanzi_progress import HanziUserProgress  # noqa: F401
-from app.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate  # noqa: F401
+from app.domain.models.user import User  # noqa: F401
+from app.domain.models.hanzi import HanziLevel, HanziCharacter, HanziUserProgress  # noqa: F401
+from app.domain.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

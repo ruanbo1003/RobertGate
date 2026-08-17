@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.service import llm_client as llm_mod
-from app.service.llm_client import LLMClient
+from app.infrastructure.ai import llm_client as llm_mod
+from app.infrastructure.ai.llm_client import LLMClient
 
 
 class _FakeResponse:

@@ -3,43 +3,49 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException
-from app.models.t2i import T2IImage, T2ITask, T2ITemplate
-from app.service import t2i_task_service as tts
-from app.service.t2i_task_service import (
-    T2ITaskService,
-    _build_prompt,
-    _canonical_hash,
-    _normalize_item,
-)
+from app.domain.errors import ParamException
+from app.domain.models.t2i import T2IImage, T2ITask, T2ITemplate
+from app.application.services.t2i_task_service import T2ITaskService
 
 
-@pytest.fixture(autouse=True)
-def _stub_run_generation(monkeypatch):
-    async def _noop(*args, **kwargs):
-        return None
+class FakeGenerator:
+    """记录 spawn 调用，不真正跑后台生成——隔离 T2IGenerator 的实现细节。
 
-    monkeypatch.setattr(tts, "_run_generation", _noop)
+    额外记两件事，用来锁**顺序**不变量：spawn 当时的 commit 次数，以及往
+    uow 的事件日志里插一条 "spawn"。后台任务是另开 session 按 id 重查的，
+    commit 必须已经发生在 spawn 之前，否则线上会读不到行。
+    """
 
+    def __init__(self, uow=None):
+        self.calls: list[tuple[str, str, str]] = []
+        self.commit_count_at_spawn: list[int] = []
+        self._uow = uow
 
-@pytest.fixture
-def template_repo():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_repo():
-    return AsyncMock()
+    def spawn(self, task_id: str, image_id: str, prompt: str) -> None:
+        self.calls.append((task_id, image_id, prompt))
+        if self._uow is not None:
+            self.commit_count_at_spawn.append(self._uow.commit.await_count)
+            self._uow.calls.append("spawn")
 
 
 @pytest.fixture
-def image_repo():
-    return AsyncMock()
+def template_repo(uow):
+    return uow.t2i_templates
 
 
 @pytest.fixture
-def blob_repo():
-    return AsyncMock()
+def task_repo(uow):
+    return uow.t2i_tasks
+
+
+@pytest.fixture
+def image_repo(uow):
+    return uow.t2i_images
+
+
+@pytest.fixture
+def blob_repo(uow):
+    return uow.t2i_blobs
 
 
 @pytest.fixture
@@ -48,14 +54,13 @@ def ai():
 
 
 @pytest.fixture
-def service(template_repo, task_repo, image_repo, blob_repo, ai):
-    return T2ITaskService(
-        template_repo=template_repo,
-        task_repo=task_repo,
-        image_repo=image_repo,
-        blob_repo=blob_repo,
-        ai=ai,
-    )
+def generator(uow):
+    return FakeGenerator(uow)
+
+
+@pytest.fixture
+def service(uow, generator):
+    return T2ITaskService(uow=uow, generator=generator)
 
 
 def _now() -> datetime:
@@ -93,7 +98,7 @@ def _task(
         id=id_,
         template_code=template_code,
         keywords=kw,
-        keywords_hash=_canonical_hash(template_code, kw),
+        keywords_hash=T2ITask.compute_hash(template_code, kw),
         status="generating",
         last_failed=False,
         created_at=now,
@@ -117,60 +122,8 @@ def _image(
     )
 
 
-# ---------- item normalization ----------
-
-
-def test_normalize_item_trims():
-    assert _normalize_item({"item": "  Apple "}) == {"item": "Apple"}
-
-
-def test_normalize_item_missing():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_empty_string():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": "   "})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_non_string():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": 123})
-    assert exc.value.code == 2022
-
-
-def test_normalize_item_too_long():
-    with pytest.raises(ParamException) as exc:
-        _normalize_item({"item": "x" * 101})
-    assert exc.value.code == 2022
-
-
-# ---------- canonical hash + prompt ----------
-
-
-def test_canonical_hash_deterministic():
-    assert _canonical_hash("english-primer", {"item": "apple"}) == _canonical_hash(
-        "english-primer", {"item": "apple"}
-    )
-
-
-def test_canonical_hash_template_scoped():
-    a = _canonical_hash("english-primer", {"item": "apple"})
-    b = _canonical_hash("general", {"item": "apple"})
-    assert a != b
-
-
-def test_build_prompt_replaces_placeholder():
-    out = _build_prompt("cute {{item}} illustration", {"item": "apple"})
-    assert out == "cute apple illustration"
-
-
-def test_build_prompt_no_placeholder_passthrough():
-    out = _build_prompt("static prompt with no vars", {"item": "apple"})
-    assert out == "static prompt with no vars"
+# item 规范化 / hash / prompt 渲染的纯逻辑已迁入 domain，
+# 见 tests/unit/test_domain_t2i.py。
 
 
 # ---------- list_templates ----------
@@ -183,16 +136,16 @@ async def test_list_templates(service, template_repo):
         _template("general", "常规"),
     ]
     out = await service.list_templates()
-    codes = [t["code"] for t in out["templates"]]
+    codes = [t.code for t in out["templates"]]
     assert codes == ["english-primer", "general"]
-    assert "prompt" in out["templates"][0]
+    assert out["templates"][0].prompt
 
 
 # ---------- create_template ----------
 
 
 @pytest.mark.asyncio
-async def test_create_template_success(service, template_repo):
+async def test_create_template_success(service, uow, template_repo):
     template_repo.find_by_code.return_value = None
     out = await service.create_template(
         code="pets",
@@ -201,9 +154,10 @@ async def test_create_template_success(service, template_repo):
         prompt="a cute {{item}} photo",
         order_index=2,
     )
-    assert out["code"] == "pets"
-    assert out["order_index"] == 2
-    template_repo.save.assert_awaited_once()
+    assert out.code == "pets"
+    assert out.order_index == 2
+    template_repo.add.assert_called_once()
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -264,9 +218,9 @@ async def test_update_template_success(service, template_repo):
         "tpl-1", name="改名", description="d",
         prompt="new {{item}}", order_index=5,
     )
-    assert out["name"] == "改名"
-    assert out["prompt"] == "new {{item}}"
-    assert out["order_index"] == 5
+    assert out.name == "改名"
+    assert out.prompt == "new {{item}}"
+    assert out.order_index == 5
 
 
 @pytest.mark.asyncio
@@ -309,13 +263,14 @@ async def test_delete_template_has_tasks_blocked(
 
 @pytest.mark.asyncio
 async def test_delete_template_success(
-    service, template_repo, task_repo
+    service, uow, template_repo, task_repo
 ):
     tpl = _template(code="pets")
     template_repo.find_by_id.return_value = tpl
     task_repo.count_by_template_code.return_value = 0
     await service.delete_template("tpl-1")
     template_repo.delete.assert_awaited_once_with(tpl)
+    assert uow.commit.await_count == 1
 
 
 # ---------- list_tasks ----------
@@ -348,10 +303,10 @@ async def test_list_tasks_success(service, template_repo, task_repo, image_repo)
     out = await service.list_tasks("english-primer", 1, 20)
 
     assert out["total"] == 1
-    assert out["template"]["code"] == "english-primer"
+    assert out["template"].code == "english-primer"
     item = out["items"][0]
-    assert item["business_status"] == "done"
-    assert item["summary"] == "apple"
+    assert item.business_status == "done"
+    assert item.summary == "apple"
 
 
 # ---------- create_task ----------
@@ -366,7 +321,9 @@ async def test_create_task_unknown_template(service, template_repo):
 
 
 @pytest.mark.asyncio
-async def test_create_task_idempotent(service, template_repo, task_repo, image_repo):
+async def test_create_task_idempotent(
+    service, uow, template_repo, task_repo, image_repo, generator
+):
     template_repo.find_by_code.return_value = _template()
     existing = _task()
     task_repo.find_by_hash.return_value = existing
@@ -375,21 +332,46 @@ async def test_create_task_idempotent(service, template_repo, task_repo, image_r
     out = await service.create_task("english-primer", {"item": "apple"})
 
     assert out["existing"] is True
-    assert out["task"]["id"] == existing.id
-    task_repo.save.assert_not_called()
+    assert out["task"].id == existing.id
+    task_repo.add.assert_not_called()
+    assert generator.calls == []  # 命中已有任务不重新排队生成
+    # 只刷新 updated_at 也是写用例：一次提交
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_create_task_new(service, template_repo, task_repo, image_repo):
+async def test_create_task_new(
+    service, uow, template_repo, task_repo, image_repo, generator
+):
     template_repo.find_by_code.return_value = _template()
     task_repo.find_by_hash.return_value = None
 
     out = await service.create_task("english-primer", {"item": "Apple"})
 
     assert out["existing"] is False
-    assert out["task"]["keywords"] == {"item": "Apple"}
-    task_repo.save.assert_awaited_once()
-    image_repo.save.assert_awaited_once()
+    assert out["task"].keywords == {"item": "Apple"}
+    assert out["task"].status == "generating"
+    task_repo.add.assert_called_once()
+    image_repo.add.assert_called_once()
+    # 顺序不变量，逐位锁死（只断言次数的话，把 commit 挪到 spawn 之后照样绿）：
+    #   1. add(task) 先于 flush —— flush 是给外键定序用的
+    #   2. flush 先于 add(image) —— 两个模型之间没有 relationship()，同一次
+    #      flush 里 SQLAlchemy 不保证先插父行，必须显式定序
+    #   3. commit 先于 spawn —— 后台任务另开 session 按 id 重查，晚提交会读不到行
+    assert uow.calls == [
+        "t2i_tasks.add",
+        "flush",
+        "t2i_images.add",
+        "commit",
+        "spawn",
+    ]
+    assert generator.commit_count_at_spawn == [1]
+
+    # 排队即返回：create_task 落库返回时，generator.spawn 已被调用恰好一次。
+    assert len(generator.calls) == 1
+    spawned_task_id, spawned_image_id, spawned_prompt = generator.calls[0]
+    assert spawned_task_id == out["task"].id
+    assert spawned_prompt == "cute Apple illustration"
 
 
 # ---------- get_task ----------
@@ -415,9 +397,9 @@ async def test_get_task_returns_images(service, task_repo, image_repo):
     image_repo.list_by_task.return_value = imgs
 
     out = await service.get_task(task.id)
-    assert out["task"]["images_available"] == 1
-    assert out["task"]["images_failed"] == 1
-    assert [i["id"] for i in out["images"]] == ["i1", "i2", "i3"]
+    assert out["task"].images_available == 1
+    assert out["task"].images_failed == 1
+    assert [i.id for i in out["images"]] == ["i1", "i2", "i3"]
 
 
 # ---------- retry_task ----------
@@ -454,16 +436,26 @@ async def test_retry_task_template_deleted(
 
 @pytest.mark.asyncio
 async def test_retry_task_success(
-    service, task_repo, image_repo, template_repo
+    service, uow, task_repo, image_repo, template_repo, generator
 ):
-    task_repo.find_by_id.return_value = _task()
+    task = _task()
+    task_repo.find_by_id.return_value = task
     image_repo.has_generating.return_value = False
     template_repo.find_by_code.return_value = _template()
 
     out = await service.retry_task("t1")
-    assert out["image"]["status"] == "generating"
-    image_repo.save.assert_awaited_once()
-    task_repo.update.assert_awaited_once()
+    assert out["image"].status == "generating"
+    image_repo.add.assert_called_once()
+    assert task.status == "generating"
+    # 顺序不变量：图片入库并提交之后才排队生成（同上，spawn 后的 commit 会导致
+    # 后台任务读不到图片行）。retry 复用已存在的 task 行，不需要 flush 定序。
+    assert uow.calls == ["t2i_images.add", "commit", "spawn"]
+    assert generator.commit_count_at_spawn == [1]
+
+    assert len(generator.calls) == 1
+    spawned_task_id, spawned_image_id, _ = generator.calls[0]
+    assert spawned_task_id == "t1"
+    assert spawned_image_id == out["image"].id
 
 
 # ---------- patch_image ----------
@@ -486,17 +478,24 @@ async def test_patch_image_not_succeeded(service, image_repo):
 
 
 @pytest.mark.asyncio
-async def test_patch_image_flip(service, task_repo, image_repo):
+async def test_patch_image_flip(service, uow, task_repo, image_repo):
     img = _image(status="succeeded", available=False)
     image_repo.find_by_id.return_value = img
     task_repo.find_by_id.return_value = _task()
-    image_repo.list_by_task.return_value = [
-        _image("i1", status="succeeded", available=True),
-    ]
+    siblings = [_image("i1", status="succeeded", available=True)]
+    # 回读 siblings 也记进事件日志，这样顺序断言才真的能证明"先提交再查"，
+    # 而不只是证明两件事都发生过。
+    image_repo.list_by_task.side_effect = (
+        lambda _task_id: uow.calls.append("t2i_images.list_by_task") or siblings
+    )
 
     out = await service.patch_image("i1", True)
     assert img.available is True
     assert out["task_business_status"] == "done"
+    # 原实现在这里连续 commit 两次；合并为一次（原子性修复，对外行为不变）。
+    # 且 commit 必须早于回读 siblings（原实现也是先提交再查）——逐位锁死。
+    assert uow.calls == ["commit", "t2i_images.list_by_task"]
+    image_repo.list_by_task.assert_awaited_once()
 
 
 # ---------- delete_image ----------
@@ -519,7 +518,7 @@ async def test_delete_image_available_guard(service, image_repo):
 
 
 @pytest.mark.asyncio
-async def test_delete_image_success(service, task_repo, image_repo, blob_repo):
+async def test_delete_image_success(service, uow, task_repo, image_repo, blob_repo):
     img = _image(status="succeeded", available=False)
     image_repo.find_by_id.return_value = img
     task_repo.find_by_id.return_value = _task()
@@ -530,6 +529,9 @@ async def test_delete_image_success(service, task_repo, image_repo, blob_repo):
     image_repo.delete.assert_awaited_once_with(img)
     assert out["images_total"] == 0
     assert out["task_business_status"] == "pending"
+    # 原实现三次 commit（blob / image / task）；合并成一次，且顺序不变：
+    # 先删 blob 再删 image（外键方向），最后一次提交
+    assert uow.calls == ["t2i_images.delete", "commit"]
 
 
 # ---------- get_image_bytes ----------
