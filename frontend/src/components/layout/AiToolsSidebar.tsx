@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Languages, BookOpen, GraduationCap, Palette, ChevronDown, Plus } from 'lucide-react'
+import { Languages, BookOpen, GraduationCap, Palette, Scale, ChevronDown, Plus } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { createTemplate, getTemplates } from '../../services/t2i'
@@ -89,6 +89,7 @@ export default function AiToolsSidebar() {
       icon: Palette,
       children: t2iChildren,
     },
+    { to: '/ai-tools/legal-consult', label: '法律咨询', icon: Scale },
   ]
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({

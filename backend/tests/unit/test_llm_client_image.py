@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.service import llm_client as llm_mod
-from app.service.llm_client import LLMClient
+from app.infrastructure.ai import llm_client as llm_mod
+from app.infrastructure.ai.llm_client import LLMClient
 
 
 class _FakeResponse:
@@ -66,6 +66,7 @@ async def test_generate_image_success(monkeypatch):
         "model": "cogview-3-flash",
         "prompt": "a cute cat",
         "size": "1024x1024",
+        "image_size": "1024x1024",
     }
     assert headers["Authorization"] == "Bearer sk-test"
 

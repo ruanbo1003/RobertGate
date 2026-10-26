@@ -3,26 +3,24 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ParamException
-from app.models.hanzi_character import HanziCharacter
-from app.models.hanzi_level import HanziLevel
-from app.models.hanzi_progress import HanziUserProgress
-from app.service.hanzi_service import HanziService
+from app.application.services.hanzi_service import HanziService
+from app.domain.errors import ParamException
+from app.domain.models.hanzi import HanziCharacter, HanziLevel, HanziUserProgress
 
 
 @pytest.fixture
-def level_repo():
-    return AsyncMock()
+def level_repo(uow):
+    return uow.hanzi_levels
 
 
 @pytest.fixture
-def character_repo():
-    return AsyncMock()
+def character_repo(uow):
+    return uow.hanzi_characters
 
 
 @pytest.fixture
-def progress_repo():
-    return AsyncMock()
+def progress_repo(uow):
+    return uow.hanzi_progress
 
 
 @pytest.fixture
@@ -31,13 +29,8 @@ def ai():
 
 
 @pytest.fixture
-def service(level_repo, character_repo, progress_repo, ai):
-    return HanziService(
-        level_repo=level_repo,
-        character_repo=character_repo,
-        progress_repo=progress_repo,
-        ai=ai,
-    )
+def service(uow, ai):
+    return HanziService(uow=uow, ai=ai)
 
 
 def _level(id_: str, name: str, order: int = 0) -> HanziLevel:
@@ -80,10 +73,10 @@ async def test_list_levels_returns_totals_and_learned(
     result = await service.list_levels_with_progress("u1")
 
     assert len(result["levels"]) == 2
-    assert result["levels"][0]["total"] == 20
-    assert result["levels"][0]["learned"] == 8
-    assert result["levels"][1]["total"] == 15
-    assert result["levels"][1]["learned"] == 0  # missing in map defaults to 0
+    assert result["levels"][0].total == 20
+    assert result["levels"][0].learned == 8
+    assert result["levels"][1].total == 15
+    assert result["levels"][1].learned == 0  # missing in map defaults to 0
 
 
 @pytest.mark.asyncio
@@ -117,12 +110,12 @@ async def test_list_characters_marks_learned_state(
 
     result = await service.list_characters_for_user("u1", "l1")
 
-    assert result["level"]["id"] == "l1"
+    assert result["level"].id == "l1"
     assert len(result["characters"]) == 2
-    assert result["characters"][0]["learned"] is True
-    assert result["characters"][0]["learned_at"] is not None
-    assert result["characters"][1]["learned"] is False
-    assert result["characters"][1]["learned_at"] is None
+    assert result["characters"][0].learned is True
+    assert result["characters"][0].learned_at is not None
+    assert result["characters"][1].learned is False
+    assert result["characters"][1].learned_at is None
 
 
 @pytest.mark.asyncio
@@ -138,21 +131,22 @@ async def test_list_characters_level_not_found(service, level_repo):
 
 @pytest.mark.asyncio
 async def test_update_progress_mark_learned_new(
-    service, character_repo, progress_repo
+    service, uow, character_repo, progress_repo
 ):
     character_repo.find_by_id.return_value = _character("c1", "l1", "人")
     progress_repo.find.return_value = None
 
     result = await service.update_progress("u1", "c1", True)
 
-    assert result["learned"] is True
-    assert result["learned_at"] is not None
-    progress_repo.save.assert_awaited_once()
+    assert result.learned is True
+    assert result.learned_at is not None
+    progress_repo.add.assert_called_once()
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_update_progress_mark_learned_idempotent(
-    service, character_repo, progress_repo
+    service, uow, character_repo, progress_repo
 ):
     now = datetime.now(timezone.utc)
     character_repo.find_by_id.return_value = _character("c1", "l1", "人")
@@ -162,13 +156,15 @@ async def test_update_progress_mark_learned_idempotent(
 
     result = await service.update_progress("u1", "c1", True)
 
-    assert result["learned"] is True
-    progress_repo.save.assert_not_awaited()
+    assert result.learned is True
+    progress_repo.add.assert_not_called()
+    # 只读分支不开事务
+    uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_update_progress_unmark_deletes(
-    service, character_repo, progress_repo
+    service, uow, character_repo, progress_repo
 ):
     now = datetime.now(timezone.utc)
     character_repo.find_by_id.return_value = _character("c1", "l1", "人")
@@ -179,22 +175,24 @@ async def test_update_progress_unmark_deletes(
 
     result = await service.update_progress("u1", "c1", False)
 
-    assert result["learned"] is False
-    assert result["learned_at"] is None
+    assert result.learned is False
+    assert result.learned_at is None
     progress_repo.delete.assert_awaited_once_with(existing)
+    assert uow.commit.await_count == 1
 
 
 @pytest.mark.asyncio
 async def test_update_progress_unmark_idempotent(
-    service, character_repo, progress_repo
+    service, uow, character_repo, progress_repo
 ):
     character_repo.find_by_id.return_value = _character("c1", "l1", "人")
     progress_repo.find.return_value = None
 
     result = await service.update_progress("u1", "c1", False)
 
-    assert result["learned"] is False
+    assert result.learned is False
     progress_repo.delete.assert_not_awaited()
+    uow.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

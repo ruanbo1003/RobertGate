@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import ServerException
-from app.service.translate_service import TranslateService
+from app.application.services.translate_service import TranslateService
+from app.domain.errors import ServerException
 
 
 @pytest.fixture
