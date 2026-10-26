@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
@@ -14,6 +15,7 @@ from app.interfaces.api.routers.t2i import router as t2i_router
 from app.interfaces.api.routers.auth import router as auth_router
 from app.interfaces.api.routers.gallery import router as gallery_router
 from app.interfaces.api.routers.hanzi import router as hanzi_router
+from app.interfaces.api.routers.legal import router as legal_router
 from app.interfaces.api.routers.util import router as util_router
 
 settings = get_settings()
@@ -24,6 +26,10 @@ async def lifespan(app: FastAPI):
     setup_logging()
     await wait_for_db()
     await run_migrations()
+    # 法律咨询知识库：后台构建索引（缓存命中则秒级完成），不阻塞启动
+    from app.infrastructure.legal.factory import get_legal_kb
+
+    app.state.legal_kb_task = asyncio.create_task(get_legal_kb().build_index())
     yield
 
 
@@ -34,6 +40,7 @@ ROUTERS: list[tuple[APIRouter, str]] = [
     (t2i_router, "/api/v1"),
     (hanzi_router, "/api/v1"),
     (admin_hanzi_router, "/api/v1"),
+    (legal_router, "/api/v1"),
     (util_router, "/api"),
 ]
 

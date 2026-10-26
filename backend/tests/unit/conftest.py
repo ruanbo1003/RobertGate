@@ -24,6 +24,7 @@ REPO_NAMES = (
     "t2i_tasks",
     "t2i_images",
     "t2i_blobs",
+    "legal_messages",
 )
 
 

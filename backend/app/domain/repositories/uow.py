@@ -19,6 +19,7 @@ from app.domain.repositories.t2i import (
     T2ITaskRepository,
     T2ITemplateRepository,
 )
+from app.domain.repositories.legal import LegalMessageRepository
 from app.domain.repositories.user import UserRepository
 
 
@@ -31,6 +32,7 @@ class UnitOfWork(Protocol):
     t2i_tasks: T2ITaskRepository
     t2i_images: T2IImageRepository
     t2i_blobs: T2IImageBlobRepository
+    legal_messages: LegalMessageRepository
 
     async def flush(self) -> None:
         """把挂起的写操作发到 DB 但不结束事务。

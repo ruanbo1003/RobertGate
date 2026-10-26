@@ -14,6 +14,7 @@ const staticCrumbs: Record<string, string> = {
   '/ai-tools/english/quiz': '英文启蒙 › 答题',
   '/ai-tools/text-to-image': '文生图',
   '/ai-tools/text-to-image/playground': '文生图 › 测试',
+  '/ai-tools/legal-consult': '法律咨询',
 }
 
 function buildCrumb(pathname: string, templates: T2ITemplate[]): string {

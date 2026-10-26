@@ -22,6 +22,7 @@ from app.infrastructure.repositories.t2i_repo import (
     T2ITaskRepo,
     T2ITemplateRepo,
 )
+from app.infrastructure.repositories.legal_repo import LegalMessageRepo
 from app.infrastructure.repositories.user_repo import UserRepo
 
 
@@ -60,6 +61,10 @@ class SqlUnitOfWork:
     @cached_property
     def t2i_blobs(self) -> T2IImageBlobRepo:
         return T2IImageBlobRepo(self.session)
+
+    @cached_property
+    def legal_messages(self) -> LegalMessageRepo:
+        return LegalMessageRepo(self.session)
 
     async def flush(self) -> None:
         await self.session.flush()

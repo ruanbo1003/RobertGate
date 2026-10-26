@@ -27,15 +27,24 @@ class Settings(BaseSettings):
     # App
     DEBUG: bool = False
 
-    # LLM (OpenAI-compatible: OpenRouter / 智谱 / DeepSeek / OpenAI 等)
-    # 默认走智谱 BigModel，可通过 .env.local 覆盖。
+    # LLM (OpenAI-compatible: SiliconFlow / OpenRouter / 智谱 / OpenAI 等)
+    # 默认走 SiliconFlow DeepSeek-V3，可通过 .env.local 覆盖。
     LLM_API_KEY: str = ""
-    LLM_BASE_URL: str = "https://open.bigmodel.cn/api/paas/v4/"
-    LLM_MODEL: str = "glm-4.6"
+    LLM_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    LLM_MODEL: str = "deepseek-ai/DeepSeek-V3"
 
-    # 文生图（默认智谱 CogView-3-Flash，走 OpenAI 兼容的 /images/generations）
-    T2I_MODEL: str = "cogview-3-flash"
+    # 文生图（默认 SiliconFlow Kolors，走 OpenAI 兼容的 /images/generations）
+    T2I_MODEL: str = "Kwai-Kolors/Kolors"
     T2I_SIZE: str = "1024x1024"
+
+    # 法律咨询 RAG（复用 LLM_API_KEY / LLM_BASE_URL；未配 Key 时走 Mock）
+    LEGAL_CHAT_MODEL: str = "deepseek-ai/DeepSeek-V3"
+    LEGAL_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    LEGAL_PDF_PATH: str = "../data/law/中华人民共和国民法典.pdf"
+    LEGAL_INDEX_PATH: str = "data/legal_index.json"
+    LEGAL_TOP_K: int = 4
+    LEGAL_MIN_SCORE: float = 0.35
+    LEGAL_CONTEXT_ROUNDS: int = 20
 
     model_config = SettingsConfigDict(
         env_file=(".env", f".env.{env}"),

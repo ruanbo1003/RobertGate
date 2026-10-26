@@ -19,6 +19,7 @@ import EnglishQuizPage from './pages/ai-tools/EnglishQuizPage'
 import Text2ImagePage from './pages/ai-tools/Text2ImagePage'
 import T2ITaskListPage from './pages/ai-tools/T2ITaskListPage'
 import T2ITaskDetailPage from './pages/ai-tools/T2ITaskDetailPage'
+import LegalConsultPage from './pages/ai-tools/LegalConsultPage'
 import AdminLevelListPage from './pages/admin/AdminLevelListPage'
 import AdminCharacterListPage from './pages/admin/AdminCharacterListPage'
 
@@ -59,6 +60,7 @@ export default function App() {
               path="text-to-image/:templateCode/:taskId"
               element={<T2ITaskDetailPage />}
             />
+            <Route path="legal-consult" element={<LegalConsultPage />} />
           </Route>
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="/bookmarks" element={<NotImplementedPage />} />

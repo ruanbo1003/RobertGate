@@ -60,6 +60,11 @@ class codes:
     T2I_IMAGE_NOT_FOUND = 2025
     T2I_IMAGE_NOT_SUCCEEDED = 2026
     T2I_IMAGE_IN_USE = 2027
+    LEGAL_CONTENT_EMPTY = 2001     # legal：content 为空或全空白
+    LEGAL_CONTENT_TOO_LONG = 2003  # legal：content 超过 2000 字
+    # 与 HANZI_NOT_FOUND / USERNAME_TAKEN 撞号（延续"各业务用各的"惯例）
+    LEGAL_ARTICLE_NOT_FOUND = 2010
+
     T2I_TEMPLATE_CODE_INVALID = 2030
     T2I_TEMPLATE_NAME_INVALID = 2031
     T2I_TEMPLATE_PROMPT_INVALID = 2032
@@ -76,6 +81,8 @@ class codes:
     AI_UNAVAILABLE = 5001
     PHOTO_DIR_NOT_FOUND = 5001     # 与 AI_UNAVAILABLE 撞号（历史遗留）
     PHOTO_DIR_UNREADABLE = 5002
+    LEGAL_AI_FAILED = 5001         # legal：模型服务调用失败（与 AI_UNAVAILABLE 同值）
+    LEGAL_KB_NOT_READY = 5002      # legal：知识库索引未就绪（与 PHOTO_DIR_UNREADABLE 撞号）
 
 
 T = TypeVar("T")

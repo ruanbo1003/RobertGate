@@ -66,6 +66,7 @@ async def test_generate_image_success(monkeypatch):
         "model": "cogview-3-flash",
         "prompt": "a cute cat",
         "size": "1024x1024",
+        "image_size": "1024x1024",
     }
     assert headers["Authorization"] == "Bearer sk-test"
 

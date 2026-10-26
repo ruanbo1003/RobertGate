@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Coroutine
+from collections.abc import AsyncIterator, Coroutine
 from typing import Any, Protocol
+
+from app.domain.models.legal import LawArticle
 
 
 class AIClient(Protocol):
@@ -55,3 +57,24 @@ class TokenProvider(Protocol):
 
 class TaskRunner(Protocol):
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> None: ...
+
+
+class LegalKnowledgeBase(Protocol):
+    """民法典知识库：按条切分的向量检索 + 条文精确查询。"""
+
+    @property
+    def ready(self) -> bool:
+        """索引是否已构建完成。"""
+        ...
+
+    async def retrieve(self, query: str, top_k: int) -> list[LawArticle]:
+        """按相似度返回 top_k 条相关条文（可能为空）。"""
+        ...
+
+    def get_article(self, article_no: int) -> LawArticle | None: ...
+
+
+class LegalChatClient(Protocol):
+    """法律咨询流式对话客户端（OpenAI 兼容 messages 格式）。"""
+
+    def stream_chat(self, messages: list[dict[str, str]]) -> AsyncIterator[str]: ...

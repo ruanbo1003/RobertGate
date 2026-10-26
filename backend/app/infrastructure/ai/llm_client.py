@@ -129,7 +129,7 @@ class LLMClient:
         api_key: str,
         model: str,
         base_url: str,
-        image_model: str = "cogview-3-flash",
+        image_model: str = "Kwai-Kolors/Kolors",
         image_size: str = "1024x1024",
     ) -> None:
         self._llm = ChatOpenAI(
@@ -138,7 +138,6 @@ class LLMClient:
             base_url=base_url,
             temperature=0.3,
             timeout=30,
-            extra_body={"thinking": {"type": "disabled"}},
         )
         self._fallback = MockAIClient()
         self._api_key = api_key
@@ -217,14 +216,16 @@ class LLMClient:
         }
 
     async def generate_image(self, prompt: str) -> str:
-        """调用智谱 CogView（OpenAI 兼容 /images/generations），返回 CDN 图片 URL。
+        """调用 OpenAI 兼容 /images/generations 生成图片，返回 CDN 图片 URL。
 
-        CogView-3-Flash 目前免费。上层拿到 URL 后会自行下载 bytes 落库。
+        尺寸参数同时带 size（智谱/OpenAI 风格）和 image_size（SiliconFlow 风格），
+        各端点只认自己的那个、忽略另一个。上层拿到 URL 后会自行下载 bytes 落库。
         """
         payload = {
             "model": self._image_model,
             "prompt": prompt,
             "size": self._image_size,
+            "image_size": self._image_size,
         }
         headers = {
             "Authorization": f"Bearer {self._api_key}",
@@ -234,7 +235,7 @@ class LLMClient:
             resp = await client.post(self._image_url, json=payload, headers=headers)
         if resp.status_code >= 400:
             logger.error(
-                "cogview generate_image failed: status=%s body=%s",
+                "generate_image failed: status=%s body=%s",
                 resp.status_code,
                 resp.text[:500],
             )
