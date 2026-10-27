@@ -1,0 +1,31 @@
+{
+  "question": "复现样例-太阳为什么会发光",
+  "slug": "复现样例",
+  "created": "2026-10-27",
+  "voice": "FunAudioLLM/CosyVoice2-0.5B:anna",
+  "video_model": "Wan-AI/Wan2.2-T2V-A14B",
+  "scenes": [
+    {
+      "id": 1,
+      "narration": "小朋友，你知道吗？太阳其实是一个超级大火球！",
+      "visual_zh": "卡通太阳在蓝天中微笑发光",
+      "visual_prompt_en": "cute smiling cartoon sun glowing warmly in a clear blue sky, soft rays, bright, warm colors, child-friendly, gentle, soft lighting",
+      "status": "pending",
+      "audio_file": "clips/scene-1.mp3",
+      "clip_file": "clips/scene-1.mp4",
+      "audio_duration": 0.0,
+      "error": ""
+    },
+    {
+      "id": 2,
+      "narration": "它把光和温暖送到地球，花儿才能开，我们才能长大。",
+      "visual_zh": "阳光洒向开满鲜花的草地，花朵缓缓绽放",
+      "visual_prompt_en": "golden sunlight shining down on a meadow full of colorful flowers slowly blooming, gentle breeze, bright, warm colors, child-friendly, gentle, soft lighting",
+      "status": "pending",
+      "audio_file": "clips/scene-2.mp3",
+      "clip_file": "clips/scene-2.mp4",
+      "audio_duration": 0.0,
+      "error": ""
+    }
+  ]
+}
