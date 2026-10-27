@@ -198,10 +198,11 @@ def _generate_project(tmp_path, statuses):
 
 def _patch_generate_deps(monkeypatch, fail_scene_prompts=()):
     """mock 全部外部调用；fail_scene_prompts 里的 prompt 对应视频永远失败。"""
-    calls = {"submit": []}
+    calls = {"submit": [], "tts": []}
     monkeypatch.setattr(pipeline, "load_api_key", lambda repo_root=None: "sk-test")
 
     def fake_tts(api_key, text, voice, out_path, model=None):
+        calls["tts"].append(text)
         out_path.write_bytes(b"mp3")
         return 2.0
 
@@ -250,6 +251,64 @@ def test_generate_resume_skips_done(tmp_path, monkeypatch):
     code = cmd_generate(project, redo_ids=None, assume_yes=True)
     assert code == 0
     assert calls["submit"] == ["scene 2"], "已 done 的分镜不得重新提交"
+
+
+def test_generate_resumes_tts_after_tts_failure(tmp_path, monkeypatch):
+    """TTS 阶段失败（如余额不足）后续跑：必须先补 TTS，不得跳过直接烧视频钱。"""
+    project = _generate_project(tmp_path, ["failed"])  # 音频文件不存在、duration=0
+    calls = _patch_generate_deps(monkeypatch)
+    code = cmd_generate(project, redo_ids=None, assume_yes=True)
+    board = load_board(project / "storyboard.json")
+    assert code == 0
+    assert calls["tts"] == ["第1段旁白"], "音频缺失的分镜续跑时必须重新 TTS"
+    assert board["scenes"][0]["audio_duration"] == 2.0
+    assert (project / "clips/scene-1.mp3").is_file()
+
+
+def test_generate_redo_cancel_leaves_board_untouched(tmp_path, monkeypatch):
+    """--redo 后在成本确认处取消：磁盘上的 storyboard 不得留下 pending 重置。"""
+    project = _generate_project(tmp_path, ["done", "done"])
+    _patch_generate_deps(monkeypatch)
+    monkeypatch.setattr("builtins.input", lambda *a: "n")
+    code = cmd_generate(project, redo_ids=[1], assume_yes=False)
+    board = load_board(project / "storyboard.json")
+    assert code == 0
+    assert board["scenes"][0]["status"] == "done", "取消后不得把重置状态落盘"
+
+
+# ---------- httpx 异常收口 ----------
+
+
+def test_request_wraps_httpx_errors(monkeypatch):
+    """网络异常必须转成 RuntimeError，让 generate 能标 failed 继续，而非裸崩。"""
+    monkeypatch.setattr(pipeline, "BASE_URL", "http://127.0.0.1:9")
+    with pytest.raises(RuntimeError):
+        pipeline._request("GET", "/models", "sk")
+
+
+def test_tts_wraps_httpx_errors(monkeypatch, tmp_path):
+    monkeypatch.setattr(pipeline, "BASE_URL", "http://127.0.0.1:9")
+    with pytest.raises(RuntimeError):
+        pipeline.tts_to_file("sk", "你好", "voice", tmp_path / "a.mp3")
+
+
+def test_download_wraps_httpx_errors(tmp_path):
+    with pytest.raises(RuntimeError):
+        pipeline.download("http://127.0.0.1:9/v.mp4", tmp_path / "v.mp4")
+
+
+# ---------- verify 安装指引 ----------
+
+
+def test_verify_missing_ffmpeg_suggests_ffmpeg_full(monkeypatch, capsys):
+    """缺 ffmpeg 时必须指引 ffmpeg-full（瘦身版 ffmpeg 无 libass，装了也白装）。"""
+    monkeypatch.setattr(pipeline, "load_api_key", lambda repo_root=None: "sk")
+    monkeypatch.setattr(pipeline, "list_models", lambda *a: ["m"])
+    monkeypatch.setattr(pipeline.shutil, "which", lambda name: None)
+    code = pipeline.cmd_verify()
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ffmpeg-full" in out
 
 
 # ---------- assemble（真 ffmpeg） ----------

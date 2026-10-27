@@ -170,8 +170,11 @@ def _request(method: str, path: str, api_key: str, json_body: dict | None = None
     import httpx
 
     headers = {"Authorization": f"Bearer {api_key}"}
-    with httpx.Client(base_url=BASE_URL, timeout=60) as client:
-        resp = client.request(method, path, headers=headers, json=json_body)
+    try:
+        with httpx.Client(base_url=BASE_URL, timeout=60) as client:
+            resp = client.request(method, path, headers=headers, json=json_body)
+    except httpx.HTTPError as e:  # 网络异常收口，让调用方能标 failed 继续
+        raise RuntimeError(f"SiliconFlow 请求失败（{path}）: {e}") from e
     if resp.status_code >= 400:
         raise RuntimeError(f"SiliconFlow HTTP {resp.status_code}: {resp.text[:300]}")
     return resp.json()
@@ -195,12 +198,15 @@ def tts_to_file(api_key: str, text: str, voice: str, out_path: Path, model: str 
     """TTS 落盘 mp3，返回 ffprobe 实测时长（秒）——视频片段长度以此为锚。"""
     import httpx
 
-    with httpx.Client(base_url=BASE_URL, timeout=120) as client:
-        resp = client.post(
-            "/audio/speech",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"model": model, "input": text, "voice": voice, "response_format": "mp3"},
-        )
+    try:
+        with httpx.Client(base_url=BASE_URL, timeout=120) as client:
+            resp = client.post(
+                "/audio/speech",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={"model": model, "input": text, "voice": voice, "response_format": "mp3"},
+            )
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"TTS 请求失败: {e}") from e
     if resp.status_code >= 400:
         raise RuntimeError(f"TTS 失败 HTTP {resp.status_code}: {resp.text[:300]}")
     out_path.write_bytes(resp.content)
@@ -237,9 +243,12 @@ def poll_video(api_key: str, request_id: str, timeout_s: int = 900, interval_s: 
 def download(url: str, out_path: Path) -> None:
     import httpx
 
-    with httpx.Client(timeout=300, follow_redirects=True) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
+    try:
+        with httpx.Client(timeout=300, follow_redirects=True) as client:
+            resp = client.get(url)
+            resp.raise_for_status()
+    except httpx.HTTPError as e:
+        raise RuntimeError(f"下载视频失败: {e}") from e
     out_path.write_bytes(resp.content)
 
 
@@ -307,7 +316,8 @@ def cmd_verify(full: bool = False) -> int:
         if " subtitles " not in filters:
             missing.append("ffmpeg 的 subtitles 滤镜（libass）")
     if missing:
-        print(f"❌ 缺少: {', '.join(missing)} —— 安装: brew install ffmpeg")
+        print(f"❌ 缺少: {', '.join(missing)} —— 安装: brew install ffmpeg-full"
+              "（瘦身版 ffmpeg 无 libass，烧字幕必须完整版）")
         ok = False
     else:
         print("✅ ffmpeg / ffprobe / subtitles 滤镜可用")
@@ -353,8 +363,6 @@ def cmd_generate(project_dir: Path, redo_ids: list[int] | None = None, assume_ye
     board_path = project_dir / "storyboard.json"
     data = load_board(board_path)
     todo = scenes_todo(data, redo_ids)
-    if redo_ids:
-        save_board(board_path, data)  # 重置的状态立即落盘
     if not todo:
         print("没有待生成的分镜。")
         return 0
@@ -364,6 +372,8 @@ def cmd_generate(project_dir: Path, redo_ids: list[int] | None = None, assume_ye
     if not assume_yes and input("确认开始生成？(y/N) ").strip().lower() != "y":
         print("已取消。")
         return 0
+    if redo_ids:
+        save_board(board_path, data)  # --redo 的状态重置，确认通过后才落盘
 
     api_key = load_api_key()
     voice = data.get("voice") or DEFAULT_VOICE
@@ -373,7 +383,9 @@ def cmd_generate(project_dir: Path, redo_ids: list[int] | None = None, assume_ye
     for scene in todo:
         sid = scene["id"]
         try:
-            if scene["status"] == "pending":
+            # TTS 需求看产物不看状态：failed 可能失败在 TTS 阶段，跳过会烧出废片
+            audio_path = project_dir / scene["audio_file"]
+            if not audio_path.is_file() or not scene["audio_duration"]:
                 print(f"[分镜 {sid}] 旁白 TTS ...")
                 scene["audio_duration"] = tts_to_file(
                     api_key, scene["narration"], voice, project_dir / scene["audio_file"])
