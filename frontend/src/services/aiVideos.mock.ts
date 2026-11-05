@@ -37,7 +37,7 @@ function delay<T>(v: T, ms = 220): Promise<T> {
 
 const MODELS: ModelsMap = {
   llm: [
-    { id: 'google/gemini-3-flash', name: 'Gemini 3 Flash', default: true },
+    { id: 'google/gemini-3.8-flash', name: 'Gemini 3.8 Flash', default: true },
     { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2' },
   ],
   t2i: [
@@ -156,7 +156,7 @@ function makeShot(
 }
 
 const DEFAULT_MODELS = {
-  llm: 'google/gemini-3-flash',
+  llm: 'google/gemini-3.8-flash',
   t2i: 'google/gemini-3.1-flash-image',
   i2v: 'bytedance/seedance-2.0-fast',
   tts: 'openai/gpt-audio',

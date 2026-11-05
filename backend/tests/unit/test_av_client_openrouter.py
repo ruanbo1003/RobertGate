@@ -93,7 +93,7 @@ async def test_quota_status_maps_to_quota_code():
 # ---------------- videos ----------------
 
 
-async def test_generate_video_full_flow_and_duration_clamp():
+async def test_generate_video_full_flow_and_duration_snap():
     captured: dict = {}
     polls = {"n": 0}
 
@@ -116,7 +116,7 @@ async def test_generate_video_full_flow_and_duration_clamp():
     )
     assert out == MP4
     assert polls["n"] == 2
-    assert captured["duration"] == 10  # clamp 到 [2,10]
+    assert captured["duration"] == 15  # snap 到 seedance 允许档位上限
     assert captured["aspect_ratio"] == "9:16"
     assert captured["resolution"] == "720p"
     frame = captured["frame_images"][0]
@@ -145,9 +145,15 @@ def _sse(chunks: list[dict]) -> bytes:
     return "".join(lines).encode()
 
 
-async def test_generate_speech_concatenates_audio_chunks():
+async def test_generate_speech_concatenates_pcm_chunks_and_transcodes(monkeypatch):
+    import app.infrastructure.ai.av_client_openrouter as mod
+
+    async def fake_transcode(pcm: bytes) -> bytes:
+        return b"MP3:" + pcm
+
+    monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
     captured: dict = {}
-    a, b = base64.b64encode(b"mp3-a").decode(), base64.b64encode(b"mp3-b").decode()
+    a, b = base64.b64encode(b"pcm-a").decode(), base64.b64encode(b"pcm-b").decode()
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.update(json.loads(request.content))
@@ -161,9 +167,10 @@ async def test_generate_speech_concatenates_audio_chunks():
         return httpx.Response(200, content=body)
 
     out = await make_client(handler).generate_speech("Hi there", "openai/gpt-audio", "alloy")
-    assert out == b"mp3-amp3-b"
+    assert out == b"MP3:pcm-apcm-b"
     assert captured["modalities"] == ["text", "audio"]
-    assert captured["audio"] == {"voice": "alloy", "format": "mp3"}
+    # OpenAI 流式音频仅支持 pcm16，客户端收完后 ffmpeg 转 mp3
+    assert captured["audio"] == {"voice": "alloy", "format": "pcm16"}
     assert captured["stream"] is True
 
 

@@ -23,18 +23,44 @@ import logging
 import httpx
 
 from app.domain.errors import ServerException, codes
+from app.infrastructure.data.av_models import snap_duration
 
 logger = logging.getLogger(__name__)
 
 _QUOTA_STATUS = {401, 402}
 _VIDEO_POLL_INTERVAL = 5.0
 _VIDEO_POLL_TIMEOUT = 600.0
-_DURATION_MIN, _DURATION_MAX = 2, 10
 
 _SPEECH_SYSTEM = (
     "You are a text-to-speech engine. Read the user's text aloud verbatim, "
     "word for word. Do not add, omit, translate or comment on anything."
 )
+
+
+async def _pcm16_to_mp3(pcm: bytes, sample_rate: int = 24000) -> bytes:
+    """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3。"""
+    cmd = [
+        "ffmpeg", "-v", "error",
+        "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
+        "-f", "mp3", "pipe:1",
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        out, err = await proc.communicate(pcm)
+    except FileNotFoundError as e:
+        raise ServerException(
+            codes.AV_UPSTREAM_FAILED, "TTS 转码失败：请先安装 ffmpeg"
+        ) from e
+    if proc.returncode != 0 or not out:
+        raise ServerException(
+            codes.AV_UPSTREAM_FAILED, f"TTS 转码失败：{err.decode()[:200]}"
+        )
+    return out
 
 
 def _data_url(image: bytes) -> str:
@@ -131,7 +157,7 @@ class OpenRouterAvClient:
             ],
             "aspect_ratio": "9:16",
             "resolution": "720p",
-            "duration": max(_DURATION_MIN, min(_DURATION_MAX, duration_seconds)),
+            "duration": snap_duration(model, duration_seconds),
         }
         submit = await self._request(
             "POST", f"{self._base}/videos", "图生视频提交", json=payload
@@ -168,10 +194,12 @@ class OpenRouterAvClient:
     # ---------------- tts ----------------
 
     async def generate_speech(self, text: str, model: str, voice: str) -> bytes:
+        # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16：
+        # 流式收 pcm16（24kHz 单声道 s16le），收完 ffmpeg 转 mp3。
         payload = {
             "model": model,
             "modalities": ["text", "audio"],
-            "audio": {"voice": voice, "format": "mp3"},
+            "audio": {"voice": voice, "format": "pcm16"},
             "stream": True,
             "messages": [
                 {"role": "system", "content": _SPEECH_SYSTEM},
@@ -209,7 +237,7 @@ class OpenRouterAvClient:
             raise ServerException(codes.AV_UPSTREAM_FAILED, f"TTS 网络错误：{e}") from e
         if not chunks:
             raise ServerException(codes.AV_UPSTREAM_FAILED, "TTS 响应不含音频数据")
-        return b"".join(chunks)
+        return await _pcm16_to_mp3(b"".join(chunks))
 
     # ---------------- llm ----------------
 

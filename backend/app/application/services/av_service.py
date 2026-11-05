@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 # 与 infrastructure/data/av_models.py 的 default 保持一致的兜底（deps 装配时注入权威值）
 _FALLBACK_MODELS = {
-    "llm": "google/gemini-3-flash",
+    "llm": "google/gemini-3.8-flash",
     "t2i": "google/gemini-3.1-flash-image",
     "i2v": "bytedance/seedance-2.0-fast",
     "tts": "openai/gpt-audio",

@@ -42,7 +42,7 @@
   "code": 0,
   "data": {
     "models": {
-      "llm":  [ { "id": "google/gemini-3-flash", "name": "Gemini 3 Flash", "default": true } ],
+      "llm":  [ { "id": "google/gemini-3.8-flash", "name": "Gemini 3.8 Flash", "default": true } ],
       "t2i":  [ { "id": "google/gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "default": true, "reference": "multi" } ],
       "i2v":  [ { "id": "bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
@@ -206,7 +206,7 @@
   "synopsis": "Momo 和 Kuku 去超市买苹果，学习水果和购物用语",
   "character_ids": [1, 3],
   "target_duration": 90,
-  "default_models": { "llm": "google/gemini-3-flash", "t2i": "google/gemini-3.1-flash-image", "i2v": "bytedance/seedance-2.0-fast", "tts": "openai/gpt-audio" },
+  "default_models": { "llm": "google/gemini-3.8-flash", "t2i": "google/gemini-3.1-flash-image", "i2v": "bytedance/seedance-2.0-fast", "tts": "openai/gpt-audio" },
   "tts_voice": "alex"
 }
 ```
@@ -292,7 +292,7 @@ LLM 按 `synopsis` + 角色设定 + `target_duration` 生成结构化剧本。�
 #### 请求
 
 ```json
-{ "model": "google/gemini-3-flash" }
+{ "model": "google/gemini-3.8-flash" }
 ```
 
 #### 响应
@@ -314,7 +314,7 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 #### 请求
 
 ```json
-{ "model": "google/gemini-3-flash", "confirm_replace": true }
+{ "model": "google/gemini-3.8-flash", "confirm_replace": true }
 ```
 
 已存在分镜且 `confirm_replace` 非 true → `2005`，`data.existing_shot_count` 提示数量；为 true 则**删除全部旧分镜及产物**后重建。
