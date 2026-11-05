@@ -25,6 +25,11 @@ REPO_NAMES = (
     "t2i_images",
     "t2i_blobs",
     "legal_messages",
+    "av_characters",
+    "av_character_images",
+    "av_projects",
+    "av_project_characters",
+    "av_shots",
 )
 
 

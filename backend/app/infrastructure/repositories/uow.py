@@ -22,6 +22,13 @@ from app.infrastructure.repositories.t2i_repo import (
     T2ITaskRepo,
     T2ITemplateRepo,
 )
+from app.infrastructure.repositories.ai_video_repo import (
+    AvCharacterImageRepo,
+    AvCharacterRepo,
+    AvProjectCharacterRepo,
+    AvProjectRepo,
+    AvShotRepo,
+)
 from app.infrastructure.repositories.legal_repo import LegalMessageRepo
 from app.infrastructure.repositories.user_repo import UserRepo
 
@@ -65,6 +72,26 @@ class SqlUnitOfWork:
     @cached_property
     def legal_messages(self) -> LegalMessageRepo:
         return LegalMessageRepo(self.session)
+
+    @cached_property
+    def av_characters(self) -> AvCharacterRepo:
+        return AvCharacterRepo(self.session)
+
+    @cached_property
+    def av_character_images(self) -> AvCharacterImageRepo:
+        return AvCharacterImageRepo(self.session)
+
+    @cached_property
+    def av_projects(self) -> AvProjectRepo:
+        return AvProjectRepo(self.session)
+
+    @cached_property
+    def av_project_characters(self) -> AvProjectCharacterRepo:
+        return AvProjectCharacterRepo(self.session)
+
+    @cached_property
+    def av_shots(self) -> AvShotRepo:
+        return AvShotRepo(self.session)
 
     async def flush(self) -> None:
         await self.session.flush()

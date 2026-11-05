@@ -39,3 +39,9 @@ docs/photos/
 # t2i manual test outputs
 backend/scripts/images/
 output/
+
+# superpowers 执行工作区（ledger/briefs，git 历史即记录）
+.superpowers/
+
+# ai-videos 运行期产物（生成的图/视频/音频/成片）
+backend/data/ai-videos/

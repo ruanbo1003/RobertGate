@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, X, Cpu, Bookmark, User, Image } from 'lucide-react'
+import { Menu, X, Cpu, Bookmark, User, Image, Clapperboard } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../../store/AuthContext'
 import UserMenu from './UserMenu'
 
 const navLinks = [
-  { to: '/ai-tools', label: 'AI Tools', icon: Cpu },
+  { to: '/ai-videos', label: 'AI Videos', icon: Clapperboard },
+  { to: '/ai-tools', label: 'Tools', icon: Cpu },
   { to: '/bookmarks', label: 'Bookmarks', icon: Bookmark },
   { to: '/gallery', label: 'Gallery', icon: Image },
   { to: '/about', label: 'About', icon: User },

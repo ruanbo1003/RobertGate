@@ -17,7 +17,7 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
         try:
             return await call_next(request)
         except AppException as e:
-            return ApiResponse(code=e.code, message=e.message)
+            return ApiResponse(code=e.code, data=e.data, message=e.message)
         except ValueError as e:
             return ApiResponse(code=codes.PARAM_INVALID, message=str(e))
         except Exception as e:
