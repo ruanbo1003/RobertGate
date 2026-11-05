@@ -68,3 +68,10 @@ class TestSegmentNormalization:
         assert "setsar=1" in fc
         # 归一化在前，末帧定格在后
         assert fc.index("scale=720:1280") < fc.index("tpad=")
+
+    def test_segment_cmd_uses_configured_ffmpeg_bin(self):
+        cmd = build_segment_cmd(
+            Path("v.mp4"), Path("a.mp3"), 5.0, Path("out.mp4"),
+            ffmpeg_bin="/opt/ffmpeg-full/bin/ffmpeg",
+        )
+        assert cmd[0] == "/opt/ffmpeg-full/bin/ffmpeg"

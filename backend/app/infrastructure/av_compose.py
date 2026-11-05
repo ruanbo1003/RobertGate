@@ -57,11 +57,13 @@ def build_srt(entries: list[tuple[str, float]]) -> str:
     return "\n\n".join(blocks) + "\n"
 
 
-def build_segment_cmd(video: Path, audio: Path, duration: float, out: Path) -> list[str]:
+def build_segment_cmd(
+    video: Path, audio: Path, duration: float, out: Path, ffmpeg_bin: str = "ffmpeg"
+) -> list[str]:
     """单镜分段命令：归一化到 720x1280（各模型出图/出视频分辨率不一，
     concat 阶段 -c copy 要求分段同参数），视频末帧定格补齐到 duration，与配音混流。"""
     return [
-        "ffmpeg",
+        ffmpeg_bin,
         "-y",
         "-i", str(video),
         "-i", str(audio),
@@ -97,13 +99,13 @@ async def _run_cmd(cmd: list[str]) -> None:
         raise ComposeError(f"{cmd[0]} 失败（exit {proc.returncode}）：{tail}")
 
 
-async def probe_duration(path: Path) -> float | None:
+async def probe_duration(path: Path, ffprobe_bin: str = "ffprobe") -> float | None:
     """ffprobe 读媒体时长（秒）；ffprobe 不可用或解析失败返回 None。"""
-    if shutil.which("ffprobe") is None:
+    if shutil.which(ffprobe_bin) is None:
         return None
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffprobe", "-v", "quiet", "-print_format", "json",
+            ffprobe_bin, "-v", "quiet", "-print_format", "json",
             "-show_format", str(path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -120,22 +122,32 @@ async def probe_duration(path: Path) -> float | None:
 
 
 class FfmpegComposer:
-    """VideoComposer 的 ffmpeg 实现。"""
+    """VideoComposer 的 ffmpeg 实现。
+
+    ffmpeg_bin/ffprobe_bin 可配置（AV_FFMPEG_BIN/AV_FFPROBE_BIN）：macOS 上
+    Homebrew 瘦身版 ffmpeg 没有烧字幕所需的 subtitles/libass，需指向 ffmpeg-full。
+    """
+
+    def __init__(self, ffmpeg_bin: str = "ffmpeg", ffprobe_bin: str = "ffprobe") -> None:
+        self._ffmpeg = ffmpeg_bin
+        self._ffprobe = ffprobe_bin
 
     async def compose(self, items: list[ComposeItem], out_path: Path) -> None:
-        if shutil.which("ffmpeg") is None:
-            raise ComposeError("ffmpeg 不可用：请先安装 ffmpeg（含 libx264 的完整版本）")
+        if shutil.which(self._ffmpeg) is None:
+            raise ComposeError("ffmpeg 不可用：请先安装 ffmpeg（含 libx264/libass 的完整版本）")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="av-compose-") as tmp:
             work = Path(tmp)
             durations: list[float] = []
             segments: list[Path] = []
             for i, item in enumerate(items):
-                video_dur = await probe_duration(item.video) or 5.0
-                audio_dur = await probe_duration(item.audio) or video_dur
+                video_dur = await probe_duration(item.video, self._ffprobe) or 5.0
+                audio_dur = await probe_duration(item.audio, self._ffprobe) or video_dur
                 duration = round(max(video_dur, audio_dur), 2)
                 seg = work / f"seg_{i:03d}.mp4"
-                await _run_cmd(build_segment_cmd(item.video, item.audio, duration, seg))
+                await _run_cmd(
+                    build_segment_cmd(item.video, item.audio, duration, seg, self._ffmpeg)
+                )
                 durations.append(duration)
                 segments.append(seg)
 
@@ -145,7 +157,7 @@ class FfmpegComposer:
             )
             merged = work / "merged.mp4"
             await _run_cmd(
-                ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                [self._ffmpeg, "-y", "-f", "concat", "-safe", "0",
                  "-i", str(concat_list), "-c", "copy", str(merged)]
             )
 
@@ -155,7 +167,7 @@ class FfmpegComposer:
                 encoding="utf-8",
             )
             await _run_cmd(
-                ["ffmpeg", "-y", "-i", str(merged),
+                [self._ffmpeg, "-y", "-i", str(merged),
                  "-vf", f"subtitles={srt.as_posix()}",
                  "-c:a", "copy", str(out_path)]
             )

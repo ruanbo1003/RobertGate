@@ -91,7 +91,8 @@ def get_av_queue() -> AvGenerationQueue:
 
 @lru_cache
 def get_av_composer() -> FfmpegComposer:
-    return FfmpegComposer()
+    s = get_settings()
+    return FfmpegComposer(ffmpeg_bin=s.AV_FFMPEG_BIN, ffprobe_bin=s.AV_FFPROBE_BIN)
 
 
 # ---------- 工作单元 ----------

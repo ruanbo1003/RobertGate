@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     AV_IMAGE_SIZE: str = "720x1280"
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # macOS Homebrew 瘦身版 ffmpeg 无 subtitles 滤镜（libass），烧字幕需指向
+    # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
+    AV_FFMPEG_BIN: str = "ffmpeg"
+    AV_FFPROBE_BIN: str = "ffprobe"
 
     # 法律咨询 RAG（复用 LLM_API_KEY / LLM_BASE_URL；未配 Key 时走 Mock）
     LEGAL_CHAT_MODEL: str = "deepseek-ai/DeepSeek-V3"
