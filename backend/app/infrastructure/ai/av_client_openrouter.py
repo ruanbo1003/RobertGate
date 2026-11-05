@@ -117,7 +117,7 @@ class OpenRouterAvClient:
     # ---------------- i2v ----------------
 
     async def generate_video(
-        self, image: bytes, prompt: str, model: str, duration_seconds: int
+        self, image: bytes, prompt: str, model: str, duration_seconds: int = 5
     ) -> bytes:
         payload = {
             "model": model,

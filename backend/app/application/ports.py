@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Coroutine
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 from app.domain.models.legal import LawArticle
@@ -78,3 +80,46 @@ class LegalChatClient(Protocol):
     """法律咨询流式对话客户端（OpenAI 兼容 messages 格式）。"""
 
     def stream_chat(self, messages: list[dict[str, str]]) -> AsyncIterator[str]: ...
+
+
+class AvGenClient(Protocol):
+    """ai-videos 生成客户端（OpenRouter：t2i / i2v / tts / llm-json）。
+
+    上游失败约定抛 ServerException：余额/Key 全局性错误用
+    codes.AV_UPSTREAM_QUOTA，其余用 codes.AV_UPSTREAM_FAILED。
+    """
+
+    async def generate_image(
+        self, prompt: str, model: str, reference_images: list[bytes] | None = None
+    ) -> bytes:
+        """文生图（多参考图模型带 reference_images），返回图片 bytes。"""
+        ...
+
+    async def generate_video(
+        self, image: bytes, prompt: str, model: str, duration_seconds: int = 5
+    ) -> bytes:
+        """图生视频（提交 + 轮询），prompt 为动作/运镜提示，返回 mp4 bytes。"""
+        ...
+
+    async def generate_speech(self, text: str, model: str, voice: str) -> bytes:
+        """TTS，返回 mp3 bytes。"""
+        ...
+
+    async def generate_json(self, system: str, user: str, model: str) -> dict:
+        """LLM JSON 输出（剧本生成 / 拆分镜）。"""
+        ...
+
+
+@dataclass(frozen=True)
+class ComposeItem:
+    """合成输入：单镜的视频/音频绝对路径与台词（字幕用）。"""
+
+    video: Path
+    audio: Path
+    line_en: str
+
+
+class VideoComposer(Protocol):
+    """成片合成器（ffmpeg 实现见 infrastructure/av_compose.py）。"""
+
+    async def compose(self, items: list[ComposeItem], out_path: Path) -> None: ...
