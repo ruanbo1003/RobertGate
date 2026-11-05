@@ -356,3 +356,36 @@ async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     await drain(queue)
     call = next(c for c in client.calls if c[0] == "video")
     assert call[1] == "prompt 1"
+
+
+async def test_upstream_call_happens_outside_uow(store, client, storage):
+    """上游生成（可长达 10 分钟）期间不得占用数据库会话/事务。"""
+    state = {"open": 0}
+
+    @asynccontextmanager
+    async def uow_factory():
+        state["open"] += 1
+        try:
+            yield MemUow(store)
+        finally:
+            state["open"] -= 1
+
+    orig = client._work
+    seen = {}
+
+    async def patched(kind, *args):
+        seen["open_during_call"] = state["open"]
+        return await orig(kind, *args)
+
+    client._work = patched
+    q = AvGenerationQueue(
+        uow_factory=uow_factory,
+        client=client,
+        storage=storage,
+        runner=AsyncioTaskRunner(),
+        reference_mode=lambda m: "none",
+        poll_interval=0.01,
+    )
+    q.enqueue(1, 1, AssetKind.IMAGE, "t2i-m")
+    await drain(q)
+    assert seen["open_during_call"] == 0

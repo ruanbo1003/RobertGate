@@ -228,25 +228,29 @@ class AvGenerationQueue:
         return prompt, refs
 
     async def _generate(self, item: _Item) -> bytes:
+        # 先在 uow 内读齐纯数据再关闭会话：上游生成可长达 10 分钟，
+        # 期间不得占用数据库连接/事务。
         async with self._uow_factory() as uow:
             shot = await uow.av_shots.find_by_id(item.shot_id)
             if shot is None:
                 raise ServerException(codes.AV_UPSTREAM_FAILED, "分镜已删除")
             if item.kind == AssetKind.IMAGE:
                 prompt, refs = await self._build_image_request(uow, shot, item.model)
-                return await self._client.generate_image(
-                    prompt, item.model, refs or None
-                )
-            if item.kind == AssetKind.VIDEO:
+            elif item.kind == AssetKind.VIDEO:
                 image_bytes = self._storage.read(shot.image_path or "")
-                return await self._client.generate_video(
-                    image_bytes,
-                    shot.video_prompt or shot.image_prompt,
-                    item.model,
-                    duration_seconds=round(shot.duration_estimate),
-                )
-            voice = item.voice or shot.audio_voice
-            return await self._client.generate_speech(shot.line_en, item.model, voice)
+                video_prompt = shot.video_prompt or shot.image_prompt
+                duration = round(shot.duration_estimate)
+            else:
+                line_en = shot.line_en
+                voice = item.voice or shot.audio_voice
+
+        if item.kind == AssetKind.IMAGE:
+            return await self._client.generate_image(prompt, item.model, refs or None)
+        if item.kind == AssetKind.VIDEO:
+            return await self._client.generate_video(
+                image_bytes, video_prompt, item.model, duration_seconds=duration
+            )
+        return await self._client.generate_speech(line_en, item.model, voice)
 
     async def _succeed(self, item: _Item, data: bytes) -> None:
         rel_path = self._storage.save(

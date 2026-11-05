@@ -67,9 +67,23 @@ async def test_generate_image_falls_back_to_url():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/images"):
             return httpx.Response(200, json={"data": [{"url": "https://files.test/x.png"}]})
+        # 产物下载发往第三方 CDN，绝不能带 OpenRouter 的 Authorization 头
+        assert "authorization" not in {k.lower() for k in request.headers}
         return httpx.Response(200, content=PNG)
 
     assert await make_client(handler).generate_image("p", "m") == PNG
+
+
+async def test_image_download_error_is_not_quota():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/images"):
+            return httpx.Response(200, json={"data": [{"url": "https://files.test/x.png"}]})
+        return httpx.Response(402, content=b"cdn payment thing")
+
+    with pytest.raises(ServerException) as ei:
+        await make_client(handler).generate_image("p", "m")
+    # CDN 的 402 不是 OpenRouter 配额错误，不能触发队列全局暂停
+    assert ei.value.code == codes.AV_UPSTREAM_FAILED
 
 
 async def test_generate_image_missing_b64_and_url_raises():
@@ -148,7 +162,7 @@ def _sse(chunks: list[dict]) -> bytes:
 async def test_generate_speech_concatenates_pcm_chunks_and_transcodes(monkeypatch):
     import app.infrastructure.ai.av_client_openrouter as mod
 
-    async def fake_transcode(pcm: bytes) -> bytes:
+    async def fake_transcode(pcm: bytes, ffmpeg_bin: str = "ffmpeg") -> bytes:
         return b"MP3:" + pcm
 
     monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
@@ -198,3 +212,31 @@ async def test_generate_json_parses_content():
         )
 
     assert await make_client(handler).generate_json("s", "u", "m") == {"scenes": []}
+
+
+async def test_generate_speech_uses_configured_ffmpeg_bin(monkeypatch):
+    import app.infrastructure.ai.av_client_openrouter as mod
+
+    seen: dict = {}
+
+    async def fake_transcode(pcm: bytes, ffmpeg_bin: str = "ffmpeg") -> bytes:
+        seen["bin"] = ffmpeg_bin
+        return b"mp3"
+
+    monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=_sse(
+                [{"choices": [{"delta": {"audio": {"data": base64.b64encode(b"p").decode()}}}]}]
+            ),
+        )
+
+    client = OpenRouterAvClient(
+        api_key="k", base_url=BASE,
+        transport=httpx.MockTransport(handler), poll_interval=0.0,
+        ffmpeg_bin="/opt/ffmpeg-full/bin/ffmpeg",
+    )
+    assert await client.generate_speech("Hi", "m", "alloy") == b"mp3"
+    assert seen["bin"] == "/opt/ffmpeg-full/bin/ffmpeg"

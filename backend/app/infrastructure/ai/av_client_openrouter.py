@@ -37,10 +37,12 @@ _SPEECH_SYSTEM = (
 )
 
 
-async def _pcm16_to_mp3(pcm: bytes, sample_rate: int = 24000) -> bytes:
+async def _pcm16_to_mp3(
+    pcm: bytes, ffmpeg_bin: str = "ffmpeg", sample_rate: int = 24000
+) -> bytes:
     """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3。"""
     cmd = [
-        "ffmpeg", "-v", "error",
+        ffmpeg_bin, "-v", "error",
         "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
         "-f", "mp3", "pipe:1",
     ]
@@ -87,11 +89,13 @@ class OpenRouterAvClient:
         base_url: str,
         transport: httpx.AsyncBaseTransport | None = None,
         poll_interval: float = _VIDEO_POLL_INTERVAL,
+        ffmpeg_bin: str = "ffmpeg",
     ) -> None:
         self._base = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._transport = transport
         self._poll_interval = poll_interval
+        self._ffmpeg_bin = ffmpeg_bin
 
     def _http(self, timeout: float) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -109,6 +113,20 @@ class OpenRouterAvClient:
         if resp.status_code >= 400:
             _raise_upstream(resp, what)
         return resp
+
+    async def _download(self, url: str, what: str) -> bytes:
+        """下载第三方产物 URL：不带 Authorization（防 Key 泄漏给 CDN），
+        错误一律按 AV_UPSTREAM_FAILED（CDN 的 402/401 不是配额错误）。"""
+        try:
+            async with self._http(300.0) as client:
+                resp = await client.get(url)
+        except httpx.HTTPError as e:
+            raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what} 下载失败：{e}") from e
+        if resp.status_code >= 400:
+            raise ServerException(
+                codes.AV_UPSTREAM_FAILED, f"{what} 下载失败 (HTTP {resp.status_code})"
+            )
+        return resp.content
 
     # ---------------- t2i ----------------
 
@@ -134,10 +152,7 @@ class OpenRouterAvClient:
         if item.get("b64_json"):
             return base64.b64decode(item["b64_json"])
         if item.get("url"):
-            dl = await self._request(
-                "GET", item["url"], "文生图下载", timeout=300.0
-            )
-            return dl.content
+            return await self._download(item["url"], "文生图")
         raise ServerException(codes.AV_UPSTREAM_FAILED, "文生图响应缺少图片数据")
 
     # ---------------- i2v ----------------
@@ -237,7 +252,7 @@ class OpenRouterAvClient:
             raise ServerException(codes.AV_UPSTREAM_FAILED, f"TTS 网络错误：{e}") from e
         if not chunks:
             raise ServerException(codes.AV_UPSTREAM_FAILED, "TTS 响应不含音频数据")
-        return await _pcm16_to_mp3(b"".join(chunks))
+        return await _pcm16_to_mp3(b"".join(chunks), self._ffmpeg_bin)
 
     # ---------------- llm ----------------
 
