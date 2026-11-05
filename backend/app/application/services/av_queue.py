@@ -65,14 +65,14 @@ class AvGenerationQueue:
         client: AvGenClient,
         storage: AvStorage,
         runner: TaskRunner,
-        supports_reference: Callable[[str], bool],
+        reference_mode: Callable[[str], str],
         poll_interval: float = 1.0,
     ) -> None:
         self._uow_factory = uow_factory
         self._client = client
         self._storage = storage
         self._runner = runner
-        self._supports_reference = supports_reference
+        self._reference_mode = reference_mode
         self._poll = poll_interval
         self._sems = {kind: asyncio.Semaphore(limit) for kind, limit in _LIMITS.items()}
         self._items: dict[tuple[int, AssetKind], _Item] = {}
@@ -195,34 +195,55 @@ class AvGenerationQueue:
         await self._fail(item, "等待分镜图超时")
         return False
 
+    async def _build_image_request(
+        self, uow, shot, model: str
+    ) -> tuple[str, list[bytes]]:
+        """按模型参考能力拼装分镜图请求。
+
+        multi：有封面的出场角色按序进参考图并点名，无封面的拼外形描述；
+        none：全部角色拼外形描述。点名/兜底文本只在此动态生成，不落库。
+        """
+        mode = self._reference_mode(model)
+        refs: list[bytes] = []
+        prefix_parts: list[str] = []
+        for cid in list(shot.ref_character_ids or []):
+            char = await uow.av_characters.find_by_id(cid)
+            if char is None:
+                continue
+            cover_bytes: bytes | None = None
+            if mode == "multi" and char.cover_image_id:
+                cover = await uow.av_character_images.find_by_id(char.cover_image_id)
+                if cover is not None:
+                    cover_bytes = self._storage.read(cover.path)
+            if cover_bytes is not None:
+                refs.append(cover_bytes)
+                prefix_parts.append(
+                    f"{char.name} is the character in reference image {len(refs)}."
+                )
+            else:
+                prefix_parts.append(f"{char.name}: {char.appearance_prompt}.")
+        prompt = shot.image_prompt
+        if prefix_parts:
+            prompt = " ".join(prefix_parts) + " " + prompt
+        return prompt, refs
+
     async def _generate(self, item: _Item) -> bytes:
         async with self._uow_factory() as uow:
             shot = await uow.av_shots.find_by_id(item.shot_id)
             if shot is None:
                 raise ServerException(codes.AV_UPSTREAM_FAILED, "分镜已删除")
             if item.kind == AssetKind.IMAGE:
-                prompt = shot.image_prompt
-                ref_bytes: bytes | None = None
-                # TODO(Task 6): 多参考图三档降级；此处为迁移期桥接（取首个出场角色）
-                ref_ids = list(shot.ref_character_ids or [])
-                if ref_ids:
-                    char = await uow.av_characters.find_by_id(ref_ids[0])
-                    if char is not None:
-                        if self._supports_reference(item.model) and char.cover_image_id:
-                            cover = await uow.av_character_images.find_by_id(
-                                char.cover_image_id
-                            )
-                            if cover is not None:
-                                ref_bytes = self._storage.read(cover.path)
-                        if ref_bytes is None:
-                            prompt = f"{char.appearance_prompt}, {prompt}"
+                prompt, refs = await self._build_image_request(uow, shot, item.model)
                 return await self._client.generate_image(
-                    prompt, item.model, [ref_bytes] if ref_bytes else None
+                    prompt, item.model, refs or None
                 )
             if item.kind == AssetKind.VIDEO:
                 image_bytes = self._storage.read(shot.image_path or "")
                 return await self._client.generate_video(
-                    image_bytes, shot.image_prompt, item.model
+                    image_bytes,
+                    shot.video_prompt or shot.image_prompt,
+                    item.model,
+                    duration_seconds=round(shot.duration_estimate),
                 )
             voice = item.voice or shot.audio_voice
             return await self._client.generate_speech(shot.line_en, item.model, voice)

@@ -72,11 +72,18 @@ def make_store():
     char.cover_image_id = 100
     cover = AvCharacterImage.create(character_id=10, path="characters/10/100.png")
     cover.id = 100
+    char2 = AvCharacter.create(name="Kuku", appearance_prompt="a small bear", personality=None)
+    char2.id = 12
+    char2.cover_image_id = 120
+    cover2 = AvCharacterImage.create(character_id=12, path="characters/12/120.png")
+    cover2.id = 120
+    char3 = AvCharacter.create(name="Lulu", appearance_prompt="a grey bunny", personality=None)
+    char3.id = 11  # 无封面
     return {
         "projects": {1: project},
         "shots": shots,
-        "characters": {10: char},
-        "character_images": {100: cover},
+        "characters": {10: char, 11: char3, 12: char2},
+        "character_images": {100: cover, 120: cover2},
     }
 
 
@@ -104,11 +111,11 @@ class FakeClient:
             self.concurrent -= 1
         return b"bytes-" + kind.encode()
 
-    async def generate_image(self, prompt, model, reference_image=None):
-        return await self._work("image", prompt, model, reference_image)
+    async def generate_image(self, prompt, model, reference_images=None):
+        return await self._work("image", prompt, model, reference_images)
 
-    async def generate_video(self, image, prompt, model):
-        return await self._work("video", prompt, model)
+    async def generate_video(self, image, prompt, model, duration_seconds=5):
+        return await self._work("video", prompt, model, duration_seconds)
 
     async def generate_speech(self, text, model, voice):
         return await self._work("audio", text, model, voice)
@@ -120,7 +127,10 @@ class FakeClient:
 class FakeStorage:
     def __init__(self):
         self.saved: dict[str, bytes] = {}
-        self.files: dict[str, bytes] = {"characters/10/100.png": b"cover-bytes"}
+        self.files: dict[str, bytes] = {
+            "characters/10/100.png": b"cover-bytes",
+            "characters/12/120.png": b"cover2-bytes",
+        }
 
     def save(self, rel_path: str, data: bytes) -> str:
         self.saved[rel_path] = data
@@ -161,7 +171,7 @@ def queue(store, client, storage):
         client=client,
         storage=storage,
         runner=AsyncioTaskRunner(),
-        supports_reference=lambda model: model == "t2i-m",
+        reference_mode=lambda model: "multi" if model == "t2i-m" else "none",
         poll_interval=0.01,
     )
 
@@ -183,21 +193,45 @@ async def test_image_success_saves_file_and_marks_shot(queue, store, storage):
     assert shot.image_version == 1
 
 
-async def test_image_uses_reference_when_model_supports(queue, store, client):
+async def test_image_multi_mode_sends_all_covers_in_order(queue, store, client):
+    store["shots"][1].ref_character_ids = [10, 12]
+    queue.enqueue(1, 1, AssetKind.IMAGE, "t2i-m")
+    await drain(queue)
+    kind, prompt, model, ref = client.calls[0]
+    assert ref == [b"cover-bytes", b"cover2-bytes"]
+    assert "Momo is the character in reference image 1" in prompt
+    assert "Kuku is the character in reference image 2" in prompt
+    assert prompt.endswith("prompt 1")
+
+
+async def test_image_multi_mode_falls_back_for_missing_cover(queue, store, client):
+    store["shots"][1].ref_character_ids = [10, 11]
     queue.enqueue(1, 1, AssetKind.IMAGE, "t2i-m")
     await drain(queue)
     kind, prompt, model, ref = client.calls[0]
     assert ref == [b"cover-bytes"]
-    assert prompt == "prompt 1"
+    assert "Momo is the character in reference image 1" in prompt
+    assert "Lulu: a grey bunny." in prompt
 
 
-async def test_image_prepends_appearance_without_reference_support(queue, store, client):
+async def test_image_none_mode_appearance_only(queue, store, client):
+    store["shots"][1].ref_character_ids = [10, 12]
     queue.enqueue(1, 1, AssetKind.IMAGE, "t2i-nref")
     await drain(queue)
     kind, prompt, model, ref = client.calls[0]
     assert ref is None
-    assert prompt.startswith("a cute fox")
-    assert "prompt 1" in prompt
+    assert "Momo: a cute fox." in prompt
+    assert "Kuku: a small bear." in prompt
+    assert prompt.endswith("prompt 1")
+
+
+async def test_image_no_characters_sends_bare_prompt(queue, store, client):
+    store["shots"][1].ref_character_ids = []
+    queue.enqueue(1, 1, AssetKind.IMAGE, "t2i-m")
+    await drain(queue)
+    kind, prompt, model, ref = client.calls[0]
+    assert ref is None
+    assert prompt == "prompt 1"
 
 
 async def test_concurrency_limit_two_images(queue, store, client):
@@ -298,3 +332,27 @@ async def test_counts_reports_project_queue(queue, store, client):
     assert pending == 1
     client.gate.set()
     await drain(queue)
+
+
+async def test_video_uses_video_prompt_and_duration(queue, store, client, storage):
+    shot = store["shots"][1]
+    shot.video_prompt = "waves at camera, slow push-in"
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    call = next(c for c in client.calls if c[0] == "video")
+    assert call[1] == "waves at camera, slow push-in"
+    assert call[3] == round(shot.duration_estimate)
+
+
+async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
+    shot = store["shots"][1]
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    call = next(c for c in client.calls if c[0] == "video")
+    assert call[1] == "prompt 1"

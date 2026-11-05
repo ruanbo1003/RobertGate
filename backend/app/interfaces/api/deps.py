@@ -85,8 +85,7 @@ def get_av_queue() -> AvGenerationQueue:
         client=get_av_client(),
         storage=get_av_storage(),
         runner=get_task_runner(),
-        # TODO(Task 6): 队列签名改 reference_mode 后删除此 shim
-        supports_reference=lambda model: reference_mode(model) != "none",
+        reference_mode=reference_mode,
     )
 
 
