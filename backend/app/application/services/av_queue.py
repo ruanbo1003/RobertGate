@@ -1,0 +1,268 @@
+"""ai-videos 进程内生成队列。
+
+规则（docs/api/ai-videos.md 第五节）：
+- 并发上限：image 2 / video 1 / audio 2，同类排队 FIFO（semaphore 排队序）
+- video 任务派发前等待同镜 image 成功；image 失败则 video 直接置失败
+- 同一产物已有排队/进行中任务 → enqueue 返回 False（上层转 2006）
+- AV_UPSTREAM_QUOTA（余额/Key 全局错误）→ 暂停整个队列、产物回退 pending；
+  新的 enqueue 视为用户已处理，自动解除暂停
+- 失败不自动重试，由用户手动重发
+
+队列脱离请求生命周期，经 uow_factory 自开工作单元写回状态。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass, field
+from typing import Callable, Protocol
+
+from app.application.ports import AvGenClient, TaskRunner
+from app.domain.errors import ServerException, codes
+from app.domain.models.ai_video import AssetKind, AssetState
+
+logger = logging.getLogger(__name__)
+
+_LIMITS: dict[AssetKind, int] = {
+    AssetKind.IMAGE: 2,
+    AssetKind.VIDEO: 1,
+    AssetKind.AUDIO: 2,
+}
+_EXT: dict[AssetKind, str] = {
+    AssetKind.IMAGE: "png",
+    AssetKind.VIDEO: "mp4",
+    AssetKind.AUDIO: "mp3",
+}
+_WAIT_IMAGE_TIMEOUT = 900.0  # video 等待前置分镜图的上限（秒）
+
+
+class AvStorage(Protocol):
+    """产物文件存取（实现见 infrastructure/av_storage.py）。"""
+
+    def save(self, rel_path: str, data: bytes) -> str: ...
+
+    def read(self, rel_path: str) -> bytes: ...
+
+    async def probe_duration(self, rel_path: str) -> float | None: ...
+
+
+@dataclass
+class _Item:
+    project_id: int
+    shot_id: int
+    kind: AssetKind
+    model: str
+    voice: str | None = None
+    state: str = field(default="queued")  # queued | running
+    cancelled: bool = False
+
+
+class AvGenerationQueue:
+    def __init__(
+        self,
+        uow_factory,
+        client: AvGenClient,
+        storage: AvStorage,
+        runner: TaskRunner,
+        supports_reference: Callable[[str], bool],
+        poll_interval: float = 1.0,
+    ) -> None:
+        self._uow_factory = uow_factory
+        self._client = client
+        self._storage = storage
+        self._runner = runner
+        self._supports_reference = supports_reference
+        self._poll = poll_interval
+        self._sems = {kind: asyncio.Semaphore(limit) for kind, limit in _LIMITS.items()}
+        self._items: dict[tuple[int, AssetKind], _Item] = {}
+        self._paused = False
+        self._paused_reason: str | None = None
+
+    # ---------------- 对外状态 ----------------
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    @property
+    def paused_reason(self) -> str | None:
+        return self._paused_reason
+
+    @property
+    def active_count(self) -> int:
+        return len(self._items)
+
+    def is_active(self, shot_id: int, kind: AssetKind) -> bool:
+        return (shot_id, kind) in self._items
+
+    def counts(self, project_id: int) -> tuple[int, int]:
+        """(排队中, 进行中)。"""
+        pending = running = 0
+        for item in self._items.values():
+            if item.project_id != project_id or item.cancelled:
+                continue
+            if item.state == "running":
+                running += 1
+            else:
+                pending += 1
+        return pending, running
+
+    # ---------------- 入队 / 取消 ----------------
+
+    def enqueue(
+        self,
+        project_id: int,
+        shot_id: int,
+        kind: AssetKind,
+        model: str,
+        voice: str | None = None,
+    ) -> bool:
+        key = (shot_id, kind)
+        if key in self._items:
+            return False
+        # 用户重新发起生成 = 已处理全局错误（换 Key/充值），自动恢复队列
+        self._paused = False
+        self._paused_reason = None
+        item = _Item(project_id=project_id, shot_id=shot_id, kind=kind, model=model, voice=voice)
+        self._items[key] = item
+        self._runner.spawn(self._run(item))
+        return True
+
+    def cancel_project(self, project_id: int) -> int:
+        """取消该项目所有排队中任务（进行中的跑完为止），返回取消数量。"""
+        cancelled = 0
+        for key, item in list(self._items.items()):
+            if item.project_id == project_id and item.state == "queued":
+                item.cancelled = True
+                self._items.pop(key, None)
+                cancelled += 1
+        return cancelled
+
+    # ---------------- 执行 ----------------
+
+    async def _run(self, item: _Item) -> None:
+        key = (item.shot_id, item.kind)
+        try:
+            if item.kind == AssetKind.VIDEO:
+                if not await self._wait_for_image(item):
+                    return
+            while self._paused and not item.cancelled:
+                await asyncio.sleep(self._poll)
+            if item.cancelled:
+                return
+            async with self._sems[item.kind]:
+                if item.cancelled:
+                    return
+                item.state = "running"
+                await self._mark(item, AssetState.RUNNING)
+                try:
+                    data = await self._generate(item)
+                except ServerException as e:
+                    if e.code == codes.AV_UPSTREAM_QUOTA:
+                        self._paused = True
+                        self._paused_reason = e.message
+                        await self._mark(item, AssetState.PENDING)
+                    else:
+                        await self._fail(item, e.message)
+                    return
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("av 生成异常 shot=%s kind=%s", item.shot_id, item.kind)
+                    await self._fail(item, str(e)[:300])
+                    return
+                await self._succeed(item, data)
+        finally:
+            self._items.pop(key, None)
+
+    async def _wait_for_image(self, item: _Item) -> bool:
+        """video 前置：等同镜 image 成功。返回 False 表示任务已终结（失败/取消）。"""
+        waited = 0.0
+        while waited < _WAIT_IMAGE_TIMEOUT:
+            if item.cancelled:
+                return False
+            async with self._uow_factory() as uow:
+                shot = await uow.av_shots.find_by_id(item.shot_id)
+                if shot is None:
+                    return False
+                state = shot.asset_state(AssetKind.IMAGE)
+            if state == AssetState.SUCCESS:
+                return True
+            if state == AssetState.FAILED:
+                await self._fail(item, "前置分镜图失败")
+                return False
+            await asyncio.sleep(self._poll)
+            waited += self._poll
+        await self._fail(item, "等待分镜图超时")
+        return False
+
+    async def _generate(self, item: _Item) -> bytes:
+        async with self._uow_factory() as uow:
+            shot = await uow.av_shots.find_by_id(item.shot_id)
+            if shot is None:
+                raise ServerException(codes.AV_UPSTREAM_FAILED, "分镜已删除")
+            if item.kind == AssetKind.IMAGE:
+                prompt = shot.image_prompt
+                ref_bytes: bytes | None = None
+                # TODO(Task 6): 多参考图三档降级；此处为迁移期桥接（取首个出场角色）
+                ref_ids = list(shot.ref_character_ids or [])
+                if ref_ids:
+                    char = await uow.av_characters.find_by_id(ref_ids[0])
+                    if char is not None:
+                        if self._supports_reference(item.model) and char.cover_image_id:
+                            cover = await uow.av_character_images.find_by_id(
+                                char.cover_image_id
+                            )
+                            if cover is not None:
+                                ref_bytes = self._storage.read(cover.path)
+                        if ref_bytes is None:
+                            prompt = f"{char.appearance_prompt}, {prompt}"
+                return await self._client.generate_image(
+                    prompt, item.model, [ref_bytes] if ref_bytes else None
+                )
+            if item.kind == AssetKind.VIDEO:
+                image_bytes = self._storage.read(shot.image_path or "")
+                return await self._client.generate_video(
+                    image_bytes, shot.image_prompt, item.model
+                )
+            voice = item.voice or shot.audio_voice
+            return await self._client.generate_speech(shot.line_en, item.model, voice)
+
+    async def _succeed(self, item: _Item, data: bytes) -> None:
+        rel_path = self._storage.save(
+            f"projects/{item.project_id}/shots/{item.shot_id}/{item.kind.value}.{_EXT[item.kind]}",
+            data,
+        )
+        duration: float | None = None
+        if item.kind == AssetKind.AUDIO:
+            duration = await self._storage.probe_duration(rel_path)
+        async with self._uow_factory() as uow:
+            shot = await uow.av_shots.find_by_id(item.shot_id)
+            if shot is None:
+                return
+            shot.mark_succeeded(item.kind, rel_path, audio_duration=duration)
+            if item.voice:
+                shot.audio_voice = item.voice
+            project = await uow.av_projects.find_by_id(item.project_id)
+            if project is not None:
+                project.mark_compose_stale()
+                project.touch()
+            await uow.commit()
+
+    async def _mark(self, item: _Item, state: AssetState) -> None:
+        async with self._uow_factory() as uow:
+            shot = await uow.av_shots.find_by_id(item.shot_id)
+            if shot is None:
+                return
+            if state == AssetState.RUNNING:
+                shot.mark_running(item.kind)
+            else:
+                setattr(shot, f"{item.kind.value}_state", state)
+            await uow.commit()
+
+    async def _fail(self, item: _Item, error: str) -> None:
+        async with self._uow_factory() as uow:
+            shot = await uow.av_shots.find_by_id(item.shot_id)
+            if shot is None:
+                return
+            shot.mark_failed(item.kind, error)
+            await uow.commit()
