@@ -48,12 +48,12 @@ logger = logging.getLogger(__name__)
 
 # 与 infrastructure/data/av_models.py 的 default 保持一致的兜底（deps 装配时注入权威值）
 _FALLBACK_MODELS = {
-    "llm": "deepseek-ai/DeepSeek-V3",
-    "t2i": "Kwai-Kolors/Kolors",
-    "i2v": "Wan-AI/Wan2.2-I2V-A14B",
-    "tts": "FunAudioLLM/CosyVoice2-0.5B",
+    "llm": "google/gemini-3-flash",
+    "t2i": "google/gemini-3.1-flash-image",
+    "i2v": "bytedance/seedance-2.0-fast",
+    "tts": "openai/gpt-audio",
 }
-_FALLBACK_VOICE = "alex"
+_FALLBACK_VOICE = "alloy"
 
 _CHAR_SHEET_SUFFIX = (
     ", character sheet, standing full body, front view, "
@@ -66,9 +66,12 @@ _SCRIPT_SYSTEM = (
     "1. 对白为简单英文短句（每句不超过 8 个单词），词汇适合启蒙阶段，多用重复句式。\n"
     "2. 只输出 JSON，结构固定为 "
     '{"scenes": [{"setting": "<英文场景描述>", '
-    '"lines": [{"character_id": <int>, "en": "<英文台词>", "zh": "<中文释义>"}]}]}。\n'
-    "3. character_id 必须取自给定角色列表。\n"
-    "4. 不要 markdown、不要解释、不要额外字段。"
+    '"lines": [{"character_id": <int>, "en": "<英文台词>", "zh": "<中文释义>", '
+    '"video_prompt": "<英文：说话角色的动作 + 运镜(static/push-in/pull-back/pan 等) + 氛围>", '
+    '"characters": ["<该镜画面中出场的角色名，取自给定角色列表>"]}]}]}。\n'
+    "3. character_id 必须取自给定角色列表；characters 里的名字必须与角色列表的 name 完全一致。\n"
+    "4. video_prompt 只描述画面动态，不要复述台词内容。\n"
+    "5. 不要 markdown、不要解释、不要额外字段。"
 )
 
 
@@ -446,6 +449,14 @@ class AvProjectService:
     async def update_shot(self, project_id: int, shot_id: int, patch: dict) -> dict:
         project = await self._get_project(project_id)
         shot = await self._get_shot(project_id, shot_id)
+        if "ref_character_ids" in patch:
+            refs = await self._uow.av_project_characters.list_by_project(project_id)
+            allowed = {r.character_id for r in refs}
+            illegal = [cid for cid in patch["ref_character_ids"] if cid not in allowed]
+            if illegal:
+                raise ParamException(
+                    codes.AV_PARAM_INVALID, f"出场角色不属于本项目：{illegal}"
+                )
         staled = shot.apply_patch(**patch)
         if staled:
             project.mark_compose_stale()

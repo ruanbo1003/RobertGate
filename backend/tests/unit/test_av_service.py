@@ -342,3 +342,73 @@ async def test_compose_spawns_background_task_after_commit(
     composer.compose.assert_awaited_once()
     assert project.compose_state == ComposeState.SUCCESS
     assert project.compose_path == "projects/1/final.mp4"
+
+
+# ---------------- Task 5: video_prompt / 出场角色 ----------------
+
+
+def test_script_system_requires_video_prompt_and_characters():
+    from app.application.services.av_service import _SCRIPT_SYSTEM
+
+    assert '"video_prompt"' in _SCRIPT_SYSTEM
+    assert '"characters"' in _SCRIPT_SYSTEM
+
+
+async def test_update_shot_rejects_ref_character_outside_project(project_service, uow):
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.find_by_id = AsyncMock(return_value=_shot())
+    uow.av_project_characters.list_by_project = AsyncMock(
+        return_value=[AvProjectCharacter(project_id=1, character_id=1)]
+    )
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    with pytest.raises(ParamException) as e:
+        await project_service.update_shot(1, 1, {"ref_character_ids": [1, 99]})
+    assert e.value.code == codes.AV_PARAM_INVALID
+
+
+async def test_update_shot_accepts_valid_ref_characters_and_stales(project_service, uow):
+    shot = _shot()
+    for kind in AssetKind:
+        shot.mark_running(kind)
+        shot.mark_succeeded(kind, path=f"p/{kind.value}")
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    uow.av_project_characters.list_by_project = AsyncMock(
+        return_value=[
+            AvProjectCharacter(project_id=1, character_id=1),
+            AvProjectCharacter(project_id=1, character_id=2),
+        ]
+    )
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    out = await project_service.update_shot(1, 1, {"ref_character_ids": [2, 1]})
+    assert out["shot"].ref_character_ids == [2, 1]
+    assert shot.image_stale and shot.video_stale
+
+
+async def test_split_shots_resolves_names_and_video_prompt(project_service, uow, queue):
+    project = _project()
+    project.script = {
+        "scenes": [
+            {
+                "setting": "p",
+                "lines": [
+                    {
+                        "character_id": 1,
+                        "en": "Hi!",
+                        "zh": "",
+                        "video_prompt": "waves, push-in",
+                        "characters": ["momo", "Ghost"],
+                    }
+                ],
+            }
+        ]
+    }
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.list_by_project = AsyncMock(return_value=[])
+    uow.av_project_characters.list_by_project = AsyncMock(
+        return_value=[AvProjectCharacter(project_id=1, character_id=1)]
+    )
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    shots = await project_service.split_shots(1, model=None, confirm_replace=False)
+    assert shots[0].video_prompt == "waves, push-in"
+    assert shots[0].ref_character_ids == [1]
