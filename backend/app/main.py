@@ -11,6 +11,7 @@ from app.interfaces.api.middleware import ApiLoggingMiddleware, ErrorHandlerMidd
 
 from app.interfaces.api.routers.admin_hanzi import router as admin_hanzi_router
 from app.interfaces.api.routers.ai_tools import router as ai_tools_router
+from app.interfaces.api.routers.ai_videos import router as ai_videos_router
 from app.interfaces.api.routers.t2i import router as t2i_router
 from app.interfaces.api.routers.auth import router as auth_router
 from app.interfaces.api.routers.gallery import router as gallery_router
@@ -38,6 +39,7 @@ ROUTERS: list[tuple[APIRouter, str]] = [
     (gallery_router, "/api/v1"),
     (ai_tools_router, "/api/v1"),
     (t2i_router, "/api/v1"),
+    (ai_videos_router, "/api/v1"),
     (hanzi_router, "/api/v1"),
     (admin_hanzi_router, "/api/v1"),
     (legal_router, "/api/v1"),

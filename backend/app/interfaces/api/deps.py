@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.ports import AIClient
 from app.application.services.admin_hanzi_service import AdminHanziService
+from app.application.services.av_queue import AvGenerationQueue
+from app.application.services.av_service import AvCharacterService, AvProjectService
 from app.application.services.auth_service import AuthService
 from app.application.services.english_service import EnglishService
 from app.application.services.gallery_service import GalleryService
@@ -24,8 +26,12 @@ from app.application.services.translate_service import TranslateService
 from app.config import get_settings
 from app.domain.errors import AuthException, codes
 from app.domain.repositories.uow import UnitOfWork
+from app.infrastructure.ai.av_client import get_av_client
 from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.ai.image_fetch import fetch_image_bytes
+from app.infrastructure.av_compose import FfmpegComposer
+from app.infrastructure.av_storage import FsAvStorage
+from app.infrastructure.data.av_models import default_model, default_voice, reference_mode
 from app.infrastructure.legal.factory import get_legal_chat, get_legal_kb
 from app.infrastructure.data.english_data import ENGLISH_THEMES
 from app.infrastructure.database.session import get_db
@@ -65,6 +71,28 @@ def get_gallery_service() -> GalleryService:
 
 def get_ai_client_dep() -> AIClient:
     return get_ai_client()
+
+
+@lru_cache
+def get_av_storage() -> FsAvStorage:
+    return FsAvStorage(Path(get_settings().AV_DATA_DIR))
+
+
+@lru_cache
+def get_av_queue() -> AvGenerationQueue:
+    return AvGenerationQueue(
+        uow_factory=new_uow,
+        client=get_av_client(),
+        storage=get_av_storage(),
+        runner=get_task_runner(),
+        reference_mode=reference_mode,
+    )
+
+
+@lru_cache
+def get_av_composer() -> FfmpegComposer:
+    s = get_settings()
+    return FfmpegComposer(ffmpeg_bin=s.AV_FFMPEG_BIN, ffprobe_bin=s.AV_FFPROBE_BIN)
 
 
 # ---------- 工作单元 ----------
@@ -154,3 +182,25 @@ async def get_t2i_task_service(
 ) -> T2ITaskService:
     generator = T2IGenerator(new_uow, ai, fetch_image_bytes, get_task_runner())
     return T2ITaskService(uow=uow, generator=generator)
+
+
+async def get_av_character_service(
+    uow: UnitOfWork = Depends(get_uow),
+) -> AvCharacterService:
+    return AvCharacterService(uow=uow, client=get_av_client(), storage=get_av_storage())
+
+
+async def get_av_project_service(
+    uow: UnitOfWork = Depends(get_uow),
+) -> AvProjectService:
+    return AvProjectService(
+        uow=uow,
+        client=get_av_client(),
+        queue=get_av_queue(),
+        storage=get_av_storage(),
+        composer=get_av_composer(),
+        runner=get_task_runner(),
+        uow_factory=new_uow,
+        model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
+        voice_default=default_voice(),
+    )

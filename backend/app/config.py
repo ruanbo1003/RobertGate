@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     T2I_MODEL: str = "Kwai-Kolors/Kolors"
     T2I_SIZE: str = "1024x1024"
 
+    # AI Videos（英语启蒙短视频工作台）
+    # SiliconFlow 侧复用 LLM_API_KEY / LLM_BASE_URL；OpenRouter 侧用独立 Key。
+    AV_DATA_DIR: str = "data/ai-videos"
+    AV_IMAGE_SIZE: str = "720x1280"
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # macOS Homebrew 瘦身版 ffmpeg 无 subtitles 滤镜（libass），烧字幕需指向
+    # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
+    AV_FFMPEG_BIN: str = "ffmpeg"
+    AV_FFPROBE_BIN: str = "ffprobe"
+
     # 法律咨询 RAG（复用 LLM_API_KEY / LLM_BASE_URL；未配 Key 时走 Mock）
     LEGAL_CHAT_MODEL: str = "deepseek-ai/DeepSeek-V3"
     LEGAL_EMBEDDING_MODEL: str = "BAAI/bge-m3"

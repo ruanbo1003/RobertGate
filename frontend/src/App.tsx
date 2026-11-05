@@ -22,6 +22,9 @@ import T2ITaskDetailPage from './pages/ai-tools/T2ITaskDetailPage'
 import LegalConsultPage from './pages/ai-tools/LegalConsultPage'
 import AdminLevelListPage from './pages/admin/AdminLevelListPage'
 import AdminCharacterListPage from './pages/admin/AdminCharacterListPage'
+import ProjectListPage from './pages/ai-videos/ProjectListPage'
+import CharactersPage from './pages/ai-videos/CharactersPage'
+import WorkbenchPage from './pages/ai-videos/WorkbenchPage'
 
 export default function App() {
   return (
@@ -63,6 +66,30 @@ export default function App() {
             <Route path="legal-consult" element={<LegalConsultPage />} />
           </Route>
           <Route path="/403" element={<ForbiddenPage />} />
+          <Route
+            path="/ai-videos"
+            element={
+              <ProtectedRoute>
+                <ProjectListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai-videos/characters"
+            element={
+              <ProtectedRoute>
+                <CharactersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ai-videos/:projectId"
+            element={
+              <ProtectedRoute>
+                <WorkbenchPage />
+              </ProtectedRoute>
+            }
+          />
           <Route path="/bookmarks" element={<NotImplementedPage />} />
           <Route path="/gallery" element={<GalleryPage />} />
           <Route path="/about" element={<AboutPage />} />

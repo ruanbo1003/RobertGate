@@ -4,11 +4,16 @@ from typing import TypeVar
 
 
 class AppException(Exception):
-    """Base application exception."""
+    """Base application exception.
 
-    def __init__(self, code: int, message: str) -> None:
+    `data` 可选：个别业务错误（如 ai-videos 的过期清单）需要在统一错误
+    响应的 data 字段里携带结构化内容，默认 None 不影响既有调用方。
+    """
+
+    def __init__(self, code: int, message: str, data: object = None) -> None:
         self.code = code
         self.message = message
+        self.data = data
         super().__init__(message)
 
 
@@ -65,6 +70,15 @@ class codes:
     # 与 HANZI_NOT_FOUND / USERNAME_TAKEN 撞号（延续"各业务用各的"惯例）
     LEGAL_ARTICLE_NOT_FOUND = 2010
 
+    # ai-videos（延续"各业务用各的"惯例，数值即 docs/api/ai-videos.md 的契约）
+    AV_PARAM_INVALID = 2001            # 与 LEGAL_CONTENT_EMPTY 撞号
+    AV_CHARACTER_IN_USE = 2002
+    AV_PRECONDITION_FAILED = 2003      # 与 LEGAL_CONTENT_TOO_LONG 撞号
+    AV_STALE_CONFIRM_REQUIRED = 2004
+    AV_SHOTS_CONFIRM_REQUIRED = 2005
+    AV_ASSET_BUSY = 2006
+    AV_NOT_FOUND = 2007
+
     T2I_TEMPLATE_CODE_INVALID = 2030
     T2I_TEMPLATE_NAME_INVALID = 2031
     T2I_TEMPLATE_PROMPT_INVALID = 2032
@@ -83,6 +97,9 @@ class codes:
     PHOTO_DIR_UNREADABLE = 5002
     LEGAL_AI_FAILED = 5001         # legal：模型服务调用失败（与 AI_UNAVAILABLE 同值）
     LEGAL_KB_NOT_READY = 5002      # legal：知识库索引未就绪（与 PHOTO_DIR_UNREADABLE 撞号）
+    AV_UPSTREAM_FAILED = 5001      # ai-videos：SiliconFlow 上游调用失败（撞号惯例）
+    AV_UPSTREAM_QUOTA = 5002       # ai-videos：余额不足 / Key 失效（全局暂停队列）
+    AV_COMPOSE_FAILED = 5003
 
 
 T = TypeVar("T")
