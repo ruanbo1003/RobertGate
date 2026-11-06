@@ -23,6 +23,9 @@ import LegalConsultPage from './pages/ai-tools/LegalConsultPage'
 import AdminLevelListPage from './pages/admin/AdminLevelListPage'
 import AdminCharacterListPage from './pages/admin/AdminCharacterListPage'
 import ProjectListPage from './pages/ai-videos/ProjectListPage'
+import IrLibraryPage from './pages/invest-reports/LibraryPage'
+import IrProjectListPage from './pages/invest-reports/ProjectListPage'
+import IrWorkbenchPage from './pages/invest-reports/WorkbenchPage'
 import CharactersPage from './pages/ai-videos/CharactersPage'
 import WorkbenchPage from './pages/ai-videos/WorkbenchPage'
 
@@ -87,6 +90,30 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <WorkbenchPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invest-reports"
+            element={
+              <ProtectedRoute>
+                <IrProjectListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invest-reports/library"
+            element={
+              <ProtectedRoute>
+                <IrLibraryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/invest-reports/:projectId"
+            element={
+              <ProtectedRoute>
+                <IrWorkbenchPage />
               </ProtectedRoute>
             }
           />
