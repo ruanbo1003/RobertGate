@@ -12,6 +12,9 @@ from app.domain.models.user import User  # noqa: F401
 from app.domain.models.hanzi import HanziLevel, HanziCharacter, HanziUserProgress  # noqa: F401
 from app.domain.models.t2i import T2IImage, T2IImageBlob, T2ITask, T2ITemplate  # noqa: F401
 from app.domain.models.legal import LegalChatMessage  # noqa: F401
+from app.domain.models.invest_report import (  # noqa: F401
+    IrChapter, IrChatMessage, IrProject, IrSample, IrSource, IrTemplate,
+)
 
 config = context.config
 if config.config_file_name is not None:

@@ -19,6 +19,14 @@ from app.domain.repositories.t2i import (
     T2ITaskRepository,
     T2ITemplateRepository,
 )
+from app.domain.repositories.invest_report import (
+    IrChapterRepository,
+    IrChatRepository,
+    IrProjectRepository,
+    IrSampleRepository,
+    IrSourceRepository,
+    IrTemplateRepository,
+)
 from app.domain.repositories.ai_video import (
     AvCharacterImageRepository,
     AvCharacterRepository,
@@ -45,6 +53,12 @@ class UnitOfWork(Protocol):
     av_projects: AvProjectRepository
     av_project_characters: AvProjectCharacterRepository
     av_shots: AvShotRepository
+    ir_samples: IrSampleRepository
+    ir_templates: IrTemplateRepository
+    ir_projects: IrProjectRepository
+    ir_chapters: IrChapterRepository
+    ir_sources: IrSourceRepository
+    ir_chats: IrChatRepository
 
     async def flush(self) -> None:
         """把挂起的写操作发到 DB 但不结束事务。

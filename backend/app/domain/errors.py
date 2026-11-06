@@ -87,6 +87,15 @@ class codes:
     T2I_TEMPLATE_BUILTIN = 2035
     T2I_TEMPLATE_IN_USE = 2036
 
+    # invest-reports（投资报告 Agent）
+    IR_PARAM_INVALID = 2040
+    IR_NOT_FOUND = 2041
+    IR_TEMPLATE_NOT_READY = 2042
+    IR_SOURCE_UNPARSEABLE = 2043
+    IR_CHAPTER_BUSY = 2044
+    IR_EXPORT_BLOCKED = 2045
+    IR_CONFIRM_REQUIRED = 2046
+
     # ---------- 5000-5999 服务端 ----------
     # 注意：AI_GENERATE_FAILED 历史上走的是 ParamException（练习文本生成），
     # 数值虽在 5xxx 段，异常类型不能改。
@@ -100,6 +109,9 @@ class codes:
     AV_UPSTREAM_FAILED = 5001      # ai-videos：SiliconFlow 上游调用失败（撞号惯例）
     AV_UPSTREAM_QUOTA = 5002       # ai-videos：余额不足 / Key 失效（全局暂停队列）
     AV_COMPOSE_FAILED = 5003
+    IR_UPSTREAM_FAILED = 5001       # invest-reports：LLM/检索上游失败（撞号惯例）
+    IR_UPSTREAM_QUOTA = 5002        # invest-reports：OpenRouter 余额/Key 全局错误
+    IR_EXPORT_FAILED = 5004
 
 
 T = TypeVar("T")

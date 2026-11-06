@@ -30,6 +30,14 @@ from app.infrastructure.repositories.ai_video_repo import (
     AvShotRepo,
 )
 from app.infrastructure.repositories.legal_repo import LegalMessageRepo
+from app.infrastructure.repositories.invest_report_repo import (
+    IrChapterRepo,
+    IrChatRepo,
+    IrProjectRepo,
+    IrSampleRepo,
+    IrSourceRepo,
+    IrTemplateRepo,
+)
 from app.infrastructure.repositories.user_repo import UserRepo
 
 
@@ -92,6 +100,30 @@ class SqlUnitOfWork:
     @cached_property
     def av_shots(self) -> AvShotRepo:
         return AvShotRepo(self.session)
+
+    @cached_property
+    def ir_samples(self) -> IrSampleRepo:
+        return IrSampleRepo(self.session)
+
+    @cached_property
+    def ir_templates(self) -> IrTemplateRepo:
+        return IrTemplateRepo(self.session)
+
+    @cached_property
+    def ir_projects(self) -> IrProjectRepo:
+        return IrProjectRepo(self.session)
+
+    @cached_property
+    def ir_chapters(self) -> IrChapterRepo:
+        return IrChapterRepo(self.session)
+
+    @cached_property
+    def ir_sources(self) -> IrSourceRepo:
+        return IrSourceRepo(self.session)
+
+    @cached_property
+    def ir_chats(self) -> IrChatRepo:
+        return IrChatRepo(self.session)
 
     async def flush(self) -> None:
         await self.session.flush()
