@@ -82,3 +82,99 @@ class ResearchContext:
     style_notes: str
     prior_chapter_titles: list[str] = field(default_factory=list)
     sources: list[SourceDoc] = field(default_factory=list)
+
+
+# ---------------- API 出参 DTO ----------------
+
+
+class DTO(BaseModel):
+    model_config = {"from_attributes": True}
+
+
+class SampleOut(DTO):
+    id: int
+    type: str
+    filename: str
+    parse_state: str
+    uploaded_at: str
+
+    @classmethod
+    def build(cls, s) -> "SampleOut":
+        return cls(id=s.id, type=s.type, filename=s.filename,
+                   parse_state=s.parse_state, uploaded_at=s.uploaded_at.isoformat())
+
+
+class TemplateOut(DTO):
+    type: str
+    status: str
+    chapters: list[dict]
+    style_notes: str
+    learned_from: list[int]
+    error: str | None
+    updated_at: str
+
+    @classmethod
+    def build(cls, t) -> "TemplateOut":
+        return cls(type=t.type, status=t.status, chapters=list(t.chapters),
+                   style_notes=t.style_notes, learned_from=list(t.learned_from),
+                   error=t.error, updated_at=t.updated_at.isoformat())
+
+
+class LibraryGroupOut(DTO):
+    template: TemplateOut | None
+    samples: list[SampleOut]
+
+
+class LibraryOut(DTO):
+    advice: LibraryGroupOut
+    dd: LibraryGroupOut
+
+
+class SourceOut(DTO):
+    id: int
+    kind: str
+    filename: str | None
+    url: str | None
+    parse_state: str
+    quality: str
+    uploaded_at: str
+
+    @classmethod
+    def build(cls, s) -> "SourceOut":
+        return cls(id=s.id, kind=s.kind, filename=s.filename, url=s.url,
+                   parse_state=s.parse_state, quality=s.quality,
+                   uploaded_at=s.uploaded_at.isoformat())
+
+
+class ChapterMetaOut(DTO):
+    id: int
+    key: str
+    title: str
+    state: str
+    error: str | None
+    tbd_count: int
+    version: int
+
+    @classmethod
+    def build(cls, c) -> "ChapterMetaOut":
+        from app.domain.models.invest_report import unresolved_tbds
+
+        return cls(id=c.id, key=c.key, title=c.title, state=c.state, error=c.error,
+                   tbd_count=len(unresolved_tbds(c.content)), version=c.version)
+
+
+class ProjectSummaryOut(DTO):
+    id: int
+    title: str
+    type: str
+    status: str
+    chapters_done: int
+    chapters_total: int
+    tbd_count: int
+    updated_at: str
+
+
+class ProjectDetailOut(ProjectSummaryOut):
+    chapters: list[ChapterMetaOut]
+    sources: list[SourceOut]
+    checklist: list[str]

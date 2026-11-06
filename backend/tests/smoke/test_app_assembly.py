@@ -50,6 +50,21 @@ def _clear_dependency_overrides():
 # 由 `.venv/bin/python -c "from app.main import app; ..."` 打印实际路由后
 # 人工核对写死。任何路由增删都会让这个测试炸掉——这是本测试的设计目的。
 EXPECTED_ROUTES = {
+    ("GET", "/api/v1/invest-reports/library"),
+    ("POST", "/api/v1/invest-reports/samples"),
+    ("DELETE", "/api/v1/invest-reports/samples/{sample_id}"),
+    ("POST", "/api/v1/invest-reports/templates/{type}/learn"),
+    ("PUT", "/api/v1/invest-reports/templates/{type}"),
+    ("GET", "/api/v1/invest-reports/projects"),
+    ("POST", "/api/v1/invest-reports/projects"),
+    ("GET", "/api/v1/invest-reports/projects/{project_id}"),
+    ("DELETE", "/api/v1/invest-reports/projects/{project_id}"),
+    ("GET", "/api/v1/invest-reports/projects/{project_id}/sources"),
+    ("POST", "/api/v1/invest-reports/projects/{project_id}/sources"),
+    ("POST", "/api/v1/invest-reports/projects/{project_id}/sources/url"),
+    ("DELETE", "/api/v1/invest-reports/projects/{project_id}/sources/{source_id}"),
+    ("GET", "/api/v1/invest-reports/projects/{project_id}/sources/{source_id}/file"),
+    ("POST", "/api/v1/invest-reports/projects/{project_id}/sources/{source_id}/impact"),
     ("GET", "/api/v1/ai-videos/models"),
     ("GET", "/api/v1/ai-videos/characters"),
     ("POST", "/api/v1/ai-videos/characters"),
