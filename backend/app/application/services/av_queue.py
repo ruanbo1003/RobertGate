@@ -222,6 +222,13 @@ class AvGenerationQueue:
                 )
             else:
                 prefix_parts.append(f"{char.name}: {char.appearance_prompt}.")
+        if refs:
+            # 参考图多为多视角设定图：只取外形，严禁复刻 sheet 版式
+            prefix_parts.append(
+                "Use the reference images only for the characters' appearance; "
+                "do not copy the character-sheet layout; "
+                "render one single coherent scene."
+            )
         prompt = shot.image_prompt
         if prefix_parts:
             prompt = " ".join(prefix_parts) + " " + prompt

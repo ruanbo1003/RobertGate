@@ -241,6 +241,7 @@
         "scenes": [
           { "setting": "At the supermarket entrance",
             "lines": [ { "character_id": 1, "en": "Look, Kuku! A supermarket!", "zh": "看，Kuku！一家超市！",
+                        "image_prompt": "wide shot of a bright supermarket entrance, sunny street",
                         "video_prompt": "points at the supermarket, slow pan right", "characters": ["Momo", "Kuku"] } ] }
         ]
       },
@@ -303,7 +304,7 @@ LLM 按 `synopsis` + 角色设定 + `target_duration` 生成结构化剧本。�
 
 **PUT** `/api/v1/ai-videos/projects/{id}/script`
 
-请求体为编辑后的完整 `script` 对象（line 的 `video_prompt`/`characters` 为可选字段，编辑时保留透传；拆分镜按 `characters` 匹配项目角色得到各镜 `ref_character_ids`，匹配不到回退说话人）。保存后**不**自动改分镜；若已存在分镜，响应附 `"shots_exist": true` 供前端提示「是否重新拆分镜」。
+请求体为编辑后的完整 `script` 对象（line 的 `image_prompt`/`video_prompt`/`characters` 为可选字段，编辑时保留透传；拆分镜按 `characters` 匹配项目角色得到各镜 `ref_character_ids`，匹配不到回退说话人；`image_prompt` 为纯场景描述——角色外形与参考图由生成队列按模型能力注入，缺省回退"场景+台词"拼接）。保存后**不**自动改分镜；若已存在分镜，响应附 `"shots_exist": true` 供前端提示「是否重新拆分镜」。
 
 ### 4.3 拆分镜（同步）
 

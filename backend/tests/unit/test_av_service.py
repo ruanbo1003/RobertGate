@@ -350,6 +350,7 @@ async def test_compose_spawns_background_task_after_commit(
 def test_script_system_requires_video_prompt_and_characters():
     from app.application.services.av_service import _SCRIPT_SYSTEM
 
+    assert '"image_prompt"' in _SCRIPT_SYSTEM
     assert '"video_prompt"' in _SCRIPT_SYSTEM
     assert '"characters"' in _SCRIPT_SYSTEM
 

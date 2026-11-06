@@ -201,6 +201,8 @@ async def test_image_multi_mode_sends_all_covers_in_order(queue, store, client):
     assert ref == [b"cover-bytes", b"cover2-bytes"]
     assert "Momo is the character in reference image 1" in prompt
     assert "Kuku is the character in reference image 2" in prompt
+    # 参考图是多视角设定图：必须声明只取外形、不得复刻 sheet 版式
+    assert "do not copy the character-sheet layout" in prompt
     assert prompt.endswith("prompt 1")
 
 

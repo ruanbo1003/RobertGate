@@ -52,6 +52,8 @@ export interface ScriptLine {
   character_id: number
   en: string
   zh: string
+  /** LLM 生成的该镜静态画面描述（可选，拆分镜时落入 shot.image_prompt） */
+  image_prompt?: string
   /** LLM 生成的动作/运镜提示（可选，拆分镜时落入 shot.video_prompt） */
   video_prompt?: string
   /** 该镜出场角色名（可选，拆分镜时解析为 ref_character_ids） */

@@ -243,6 +243,7 @@ class TestScript:
                                 "en": "Hi!",
                                 "zh": "嗨",
                                 "video_prompt": "waves, push-in",
+                                "image_prompt": " Max waves at the park gate ",
                                 "characters": ["Max", " Dog ", ""],
                             }
                         ],
@@ -252,19 +253,20 @@ class TestScript:
         )
         line = s["scenes"][0]["lines"][0]
         assert line["video_prompt"] == "waves, push-in"
+        assert line["image_prompt"] == "Max waves at the park gate"
         assert line["characters"] == ["Max", "Dog"]
 
     def test_validate_script_defaults_optional_fields(self):
         s = validate_script(VALID_SCRIPT)
         line = s["scenes"][0]["lines"][0]
         assert line["video_prompt"] == ""
+        assert line["image_prompt"] == ""
         assert line["characters"] == []
 
     def test_shots_from_script_builds_ordered_shots(self):
         shots = shots_from_script(
             project_id=7,
             script=VALID_SCRIPT,
-            appearance_of=lambda cid: {1: "a fox", 3: "a bear"}.get(cid),
             models=DEFAULT_MODELS,
             tts_voice="alex",
             resolve_character=lambda name: None,
@@ -276,11 +278,35 @@ class TestScript:
         assert shots[0].ref_character_ids == [1]
         assert shots[0].video_prompt == ""
         assert shots[0].line_en == "Hi Kuku!"
-        # 画面 prompt 融合了角色外形与场景
-        assert "a fox" in shots[0].image_prompt
+        # 回退 prompt 只含场景+台词，不含角色外形（外形由队列按模型能力注入）
         assert "At the park" in shots[0].image_prompt
         for s in shots:
             assert s.asset_state(AssetKind.IMAGE) == AssetState.PENDING
+
+    def test_shots_from_script_prefers_llm_image_prompt(self):
+        script = {
+            "scenes": [
+                {
+                    "setting": "park",
+                    "lines": [
+                        {
+                            "character_id": 1,
+                            "en": "Hi!",
+                            "zh": "嗨",
+                            "image_prompt": "wide shot of a sunny park gate, dog waving",
+                        }
+                    ],
+                }
+            ]
+        }
+        shots = shots_from_script(
+            project_id=7,
+            script=script,
+            models=DEFAULT_MODELS,
+            tts_voice="alex",
+            resolve_character=lambda name: None,
+        )
+        assert shots[0].image_prompt == "wide shot of a sunny park gate, dog waving"
 
     def test_shots_from_script_resolves_characters_and_falls_back(self):
         script = {
@@ -302,7 +328,6 @@ class TestScript:
         shots = shots_from_script(
             project_id=7,
             script=script,
-            appearance_of=lambda cid: "a fox",
             models=DEFAULT_MODELS,
             tts_voice="alex",
             resolve_character=lambda name: {"max": 7}.get(name.lower()),

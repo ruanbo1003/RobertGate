@@ -452,6 +452,7 @@ def validate_script(script: Any) -> dict:
                 raise ParamException(codes.AV_PARAM_INVALID, "对白缺少英文台词")
             zh = str(line.get("zh") or "").strip()
             video_prompt = str(line.get("video_prompt") or "").strip()
+            image_prompt = str(line.get("image_prompt") or "").strip()
             characters_raw = line.get("characters")
             characters = (
                 [str(c).strip() for c in characters_raw if str(c).strip()]
@@ -463,6 +464,7 @@ def validate_script(script: Any) -> dict:
                     "character_id": character_id,
                     "en": en,
                     "zh": zh,
+                    "image_prompt": image_prompt,
                     "video_prompt": video_prompt,
                     "characters": characters,
                 }
@@ -480,13 +482,16 @@ def estimate_duration(line_en: str) -> float:
 def shots_from_script(
     project_id: int,
     script: dict,
-    appearance_of: Callable[[int], str | None],
     models: dict[str, str],
     tts_voice: str,
     resolve_character: Callable[[str], int | None],
 ) -> list[AvShot]:
-    """把剧本拆成分镜：每句对白一镜，画面 prompt 融合角色外形与场景设定。
+    """把剧本拆成分镜：每句对白一镜。
 
+    画面 prompt：优先用 LLM 按句产出的 line.image_prompt（纯场景/构图描述）；
+    缺省回退"场景 + 台词"拼接。两者都不含角色外形——外形与参考图由生成队列
+    按模型能力动态注入（multi 档参考图点名 / none 档拼外形描述），避免把
+    设定图类指令带进分镜画面。
     出场角色：line.characters 逐名经 resolve_character 解析（解析不到的忽略），
     去重保序；为空则回退 [speaker_id]。video_prompt 直落（缺省为空串）。
     """
@@ -504,9 +509,8 @@ def shots_from_script(
                     ref_ids.append(cid)
             if not ref_ids and speaker_id is not None:
                 ref_ids = [speaker_id]
-            appearance = appearance_of(speaker_id) or "a cartoon character"
-            prompt = (
-                f"{appearance}, {setting}, {line['en']} "
+            prompt = line["image_prompt"] or (
+                f"{setting}, {line['en']} "
                 "children picture book style, soft lighting, vertical 9:16"
             )
             shots.append(

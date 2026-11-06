@@ -67,11 +67,14 @@ _SCRIPT_SYSTEM = (
     "2. 只输出 JSON，结构固定为 "
     '{"scenes": [{"setting": "<英文场景描述>", '
     '"lines": [{"character_id": <int>, "en": "<英文台词>", "zh": "<中文释义>", '
+    '"image_prompt": "<英文：该镜静态画面描述——场景/构图/光线/角色姿态>", '
     '"video_prompt": "<英文：说话角色的动作 + 运镜(static/push-in/pull-back/pan 等) + 氛围>", '
     '"characters": ["<该镜画面中出场的角色名，取自给定角色列表>"]}]}]}。\n'
     "3. character_id 必须取自给定角色列表；characters 里的名字必须与角色列表的 name 完全一致。\n"
-    "4. video_prompt 只描述画面动态，不要复述台词内容。\n"
-    "5. 不要 markdown、不要解释、不要额外字段。"
+    "4. image_prompt 只写场景与构图，不要写角色的外形细节（毛色、五官等），"
+    "更不要出现 character sheet / multiple views / 多视角排版类指令；单一连贯场景。\n"
+    "5. video_prompt 只描述画面动态，不要复述台词内容。\n"
+    "6. 不要 markdown、不要解释、不要额外字段。"
 )
 
 
@@ -390,19 +393,11 @@ class AvProjectService:
         self._queue.cancel_project(project_id)
         await self._uow.av_shots.delete_by_project(project_id)
 
-        appearances: dict[int, str | None] = {}
-        for scene in project.script["scenes"]:
-            for line in scene["lines"]:
-                cid = line["character_id"]
-                if cid not in appearances:
-                    char = await self._uow.av_characters.find_by_id(cid)
-                    appearances[cid] = char.appearance_prompt if char else None
         refs = await self._character_refs(project_id)
         name_to_id = {r.name.strip().lower(): r.id for r in refs}
         shots = shots_from_script(
             project_id=project_id,
             script=project.script,
-            appearance_of=lambda cid: appearances.get(cid),
             models=dict(project.default_models),
             tts_voice=project.tts_voice,
             resolve_character=lambda name: name_to_id.get(name.strip().lower()),
