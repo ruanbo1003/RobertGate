@@ -1,6 +1,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-pydantic[email]==2.9.2
+pydantic[email]==2.11.10
 pydantic-settings==2.5.2
 python-jose[cryptography]==3.3.0
 sqlalchemy==2.0.35
@@ -13,3 +13,8 @@ greenlet==3.3.2
 langchain==0.3.7
 langchain-openai==0.2.8
 pypdf==6.21.2
+
+# invest-reports
+pydantic-ai-slim[openai]==1.22.0
+python-docx==1.2.0
+openpyxl==3.1.5
