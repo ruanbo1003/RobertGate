@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import difflib
 import json
 import logging
+import re
 
 import httpx
 
@@ -32,20 +34,37 @@ _VIDEO_POLL_INTERVAL = 5.0
 _VIDEO_POLL_TIMEOUT = 600.0
 
 _SPEECH_SYSTEM = (
-    "You are a text-to-speech engine. Read the user's text aloud verbatim, "
-    "word for word. Do not add, omit, translate or comment on anything."
+    "You are the voice track generator for a children's English learning video. "
+    'The user message has the form: Repeat after me exactly: "...". '
+    "Speak ONLY the quoted line, word for word. Never answer the line, never add "
+    "greetings, questions or anything else. Speak slowly and clearly, warm and "
+    "cheerful, like reading to a 3-year-old child who is learning English."
 )
+_TTS_MAX_ATTEMPTS = 3
+_TRANSCRIBE_MODEL = "openai/gpt-audio-mini"
+
+
+def _normalize_spoken(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "")).strip()
+
+
+def _spoken_matches(expected: str, heard: str) -> bool:
+    """转写与台词的宽松比对：规范化后相等，或相似度 >= 0.85（容忍缩写/标点差异）。"""
+    a, b = _normalize_spoken(expected), _normalize_spoken(heard)
+    if a == b:
+        return True
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
 
 
 async def _pcm16_to_mp3(
-    pcm: bytes, ffmpeg_bin: str = "ffmpeg", sample_rate: int = 24000
+    pcm: bytes, ffmpeg_bin: str = "ffmpeg", tempo: float = 1.0, sample_rate: int = 24000
 ) -> bytes:
-    """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3。"""
-    cmd = [
-        ffmpeg_bin, "-v", "error",
-        "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
-        "-f", "mp3", "pipe:1",
-    ]
+    """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3；tempo<1 放慢语速。"""
+    cmd = [ffmpeg_bin, "-v", "error",
+           "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0"]
+    if tempo != 1.0:
+        cmd += ["-filter:a", f"atempo={tempo}"]
+    cmd += ["-f", "mp3", "pipe:1"]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -90,12 +109,14 @@ class OpenRouterAvClient:
         transport: httpx.AsyncBaseTransport | None = None,
         poll_interval: float = _VIDEO_POLL_INTERVAL,
         ffmpeg_bin: str = "ffmpeg",
+        tts_tempo: float = 1.0,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._transport = transport
         self._poll_interval = poll_interval
         self._ffmpeg_bin = ffmpeg_bin
+        self._tts_tempo = tts_tempo
 
     def _http(self, timeout: float) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -209,8 +230,29 @@ class OpenRouterAvClient:
     # ---------------- tts ----------------
 
     async def generate_speech(self, text: str, model: str, voice: str) -> bytes:
-        # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16：
-        # 流式收 pcm16（24kHz 单声道 s16le），收完 ffmpeg 转 mp3。
+        """TTS 三段式：Repeat-after-me 生成 → pcm16 转 mp3 → 转写自检（不符自动重试）。
+
+        gpt-audio 是对话模型，偶发把台词当提问去回答；每次生成后用
+        gpt-audio-mini 转写比对，最多尝试 _TTS_MAX_ATTEMPTS 次。
+        """
+        last_heard = ""
+        for attempt in range(1, _TTS_MAX_ATTEMPTS + 1):
+            pcm = await self._speech_once(text, model, voice)
+            mp3 = await _pcm16_to_mp3(pcm, self._ffmpeg_bin, tempo=self._tts_tempo)
+            heard = await self._transcribe(mp3)
+            if _spoken_matches(text, heard):
+                return mp3
+            last_heard = heard
+            logger.warning(
+                "TTS 内容校验不符 attempt=%s expected=%r heard=%r", attempt, text, heard
+            )
+        raise ServerException(
+            codes.AV_UPSTREAM_FAILED,
+            f"TTS 内容校验失败：模型朗读为「{last_heard[:120]}」，与台词不符",
+        )
+
+    async def _speech_once(self, text: str, model: str, voice: str) -> bytes:
+        # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16
         payload = {
             "model": model,
             "modalities": ["text", "audio"],
@@ -218,7 +260,7 @@ class OpenRouterAvClient:
             "stream": True,
             "messages": [
                 {"role": "system", "content": _SPEECH_SYSTEM},
-                {"role": "user", "content": text},
+                {"role": "user", "content": f'Repeat after me exactly: "{text}"'},
             ],
         }
         chunks: list[bytes] = []
@@ -252,7 +294,47 @@ class OpenRouterAvClient:
             raise ServerException(codes.AV_UPSTREAM_FAILED, f"TTS 网络错误：{e}") from e
         if not chunks:
             raise ServerException(codes.AV_UPSTREAM_FAILED, "TTS 响应不含音频数据")
-        return await _pcm16_to_mp3(b"".join(chunks), self._ffmpeg_bin)
+        return b"".join(chunks)
+
+    async def _transcribe(self, mp3: bytes) -> str:
+        """gpt-audio-mini 转写 TTS 产物用于内容自检。"""
+        resp = await self._request(
+            "POST",
+            f"{self._base}/chat/completions",
+            "TTS 校验转写",
+            json={
+                "model": _TRANSCRIBE_MODEL,
+                "modalities": ["text"],
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Write down the exact English words spoken in this "
+                                    "short audio clip, like closed captions. "
+                                    "Just the words, nothing else."
+                                ),
+                            },
+                            {
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "data": base64.b64encode(mp3).decode(),
+                                    "format": "mp3",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        try:
+            return str(resp.json()["choices"][0]["message"]["content"] or "")
+        except (KeyError, IndexError) as e:
+            raise ServerException(
+                codes.AV_UPSTREAM_FAILED, f"TTS 校验转写响应异常：{e}"
+            ) from e
 
     # ---------------- llm ----------------
 

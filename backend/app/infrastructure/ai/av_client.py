@@ -88,6 +88,7 @@ def get_av_client():
             api_key=settings.OPENROUTER_API_KEY,
             base_url=settings.OPENROUTER_BASE_URL,
             ffmpeg_bin=settings.AV_FFMPEG_BIN,
+            tts_tempo=settings.AV_TTS_TEMPO,
         )
     else:
         _av_client = MockAvClient()

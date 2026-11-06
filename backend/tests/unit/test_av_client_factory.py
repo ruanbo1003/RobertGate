@@ -21,6 +21,7 @@ def _patch_settings(monkeypatch, openrouter_key: str):
         OPENROUTER_API_KEY = openrouter_key
         OPENROUTER_BASE_URL = "https://openrouter.test/api/v1"
         AV_FFMPEG_BIN = "ffmpeg"
+        AV_TTS_TEMPO = 1.0
 
     monkeypatch.setattr(av_client_module, "_load_settings", lambda: _S())
 

@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
     AV_FFMPEG_BIN: str = "ffmpeg"
     AV_FFPROBE_BIN: str = "ffprobe"
+    # TTS 语速后处理（ffmpeg atempo）：1.0 不变，0.85~0.95 适合启蒙儿童
+    AV_TTS_TEMPO: float = 1.0
 
     # 法律咨询 RAG（复用 LLM_API_KEY / LLM_BASE_URL；未配 Key 时走 Mock）
     LEGAL_CHAT_MODEL: str = "deepseek-ai/DeepSeek-V3"
