@@ -330,7 +330,12 @@ export default function ShotEditor({
               className="w-[140px] aspect-[9/16] object-cover rounded-[var(--radius-md)] border border-border"
             />
             {shot.audio.url && shot.audio.state === 'success' && (
-              <audio controls src={resolveAssetUrl(shot.audio.url)} className="h-9 mt-1">
+              <audio
+              key={shot.audio.version}
+              controls
+              src={`${resolveAssetUrl(shot.audio.url)}${shot.audio.url.includes('?') ? '&' : '?'}v=${shot.audio.version}`}
+              className="h-9 mt-1"
+            >
                 <track kind="captions" />
               </audio>
             )}

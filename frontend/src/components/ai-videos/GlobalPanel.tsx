@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Download, Film, Loader2, Play, TriangleAlert, XCircle, Zap } from 'lucide-react'
 import type { ProjectStatusResponse, Shot } from '../../types/aiVideos'
 import { resolveAssetUrl } from '../../services/aiVideos'
@@ -30,6 +31,9 @@ export default function GlobalPanel({
   const compose = status?.compose
   const queueActive = (status?.queue.pending ?? 0) + (status?.queue.running ?? 0) > 0
   const canDownload = compose?.state === 'success' && !!compose.video_url
+  // final.mp4 的 URL 不随重新合成变化，用状态迁移驱动的时间戳破浏览器缓存
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const composeBuster = useMemo(() => Date.now(), [compose?.state, compose?.stale])
 
   return (
     <aside className="w-[320px] shrink-0 h-full flex flex-col gap-4 p-5 bg-card border-l border-border overflow-y-auto">
@@ -41,7 +45,7 @@ export default function GlobalPanel({
           {shot?.video.url && shot.video.state === 'success' ? (
             <video
               key={`${shot.id}-${shot.video.version}`}
-              src={resolveAssetUrl(shot.video.url)}
+              src={`${resolveAssetUrl(shot.video.url)}${shot.video.url.includes('?') ? '&' : '?'}v=${shot.video.version}`}
               controls
               className="w-full h-full object-contain"
             >
@@ -161,7 +165,7 @@ export default function GlobalPanel({
       )}
       {compose?.state === 'success' && compose.video_url && (
         <video
-          src={resolveAssetUrl(compose.video_url)}
+          src={`${resolveAssetUrl(compose.video_url)}${compose.video_url.includes('?') ? '&' : '?'}v=${composeBuster}`}
           controls
           className="w-full rounded-[var(--radius-md)] border border-border"
         >
