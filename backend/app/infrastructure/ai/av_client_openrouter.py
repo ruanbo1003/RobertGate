@@ -17,10 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import difflib
 import json
 import logging
-import re
 
 import httpx
 
@@ -40,20 +38,7 @@ _SPEECH_SYSTEM = (
     "greetings, questions or anything else. Speak slowly and clearly, warm and "
     "cheerful, like reading to a 3-year-old child who is learning English."
 )
-_TTS_MAX_ATTEMPTS = 3
-_TRANSCRIBE_MODEL = "openai/gpt-audio-mini"
 
-
-def _normalize_spoken(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", text.lower().replace("'", "")).strip()
-
-
-def _spoken_matches(expected: str, heard: str) -> bool:
-    """转写与台词的宽松比对：规范化后相等，或相似度 >= 0.85（容忍缩写/标点差异）。"""
-    a, b = _normalize_spoken(expected), _normalize_spoken(heard)
-    if a == b:
-        return True
-    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
 
 
 async def _pcm16_to_mp3(
@@ -230,26 +215,13 @@ class OpenRouterAvClient:
     # ---------------- tts ----------------
 
     async def generate_speech(self, text: str, model: str, voice: str) -> bytes:
-        """TTS 三段式：Repeat-after-me 生成 → pcm16 转 mp3 → 转写自检（不符自动重试）。
+        """TTS：Repeat-after-me 包裹台词 + 慢速童声指令，流式 pcm16 → ffmpeg 转 mp3。
 
-        gpt-audio 是对话模型，偶发把台词当提问去回答；每次生成后用
-        gpt-audio-mini 转写比对，最多尝试 _TTS_MAX_ATTEMPTS 次。
+        gpt-audio 是对话模型，偶发把台词当提问去回答；是否重录由用户
+        试听判断（不做自动转写自检，省 token —— Robert 2026-11-06 拍板）。
         """
-        last_heard = ""
-        for attempt in range(1, _TTS_MAX_ATTEMPTS + 1):
-            pcm = await self._speech_once(text, model, voice)
-            mp3 = await _pcm16_to_mp3(pcm, self._ffmpeg_bin, tempo=self._tts_tempo)
-            heard = await self._transcribe(mp3)
-            if _spoken_matches(text, heard):
-                return mp3
-            last_heard = heard
-            logger.warning(
-                "TTS 内容校验不符 attempt=%s expected=%r heard=%r", attempt, text, heard
-            )
-        raise ServerException(
-            codes.AV_UPSTREAM_FAILED,
-            f"TTS 内容校验失败：模型朗读为「{last_heard[:120]}」，与台词不符",
-        )
+        pcm = await self._speech_once(text, model, voice)
+        return await _pcm16_to_mp3(pcm, self._ffmpeg_bin, tempo=self._tts_tempo)
 
     async def _speech_once(self, text: str, model: str, voice: str) -> bytes:
         # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16
@@ -295,46 +267,6 @@ class OpenRouterAvClient:
         if not chunks:
             raise ServerException(codes.AV_UPSTREAM_FAILED, "TTS 响应不含音频数据")
         return b"".join(chunks)
-
-    async def _transcribe(self, mp3: bytes) -> str:
-        """gpt-audio-mini 转写 TTS 产物用于内容自检。"""
-        resp = await self._request(
-            "POST",
-            f"{self._base}/chat/completions",
-            "TTS 校验转写",
-            json={
-                "model": _TRANSCRIBE_MODEL,
-                "modalities": ["text"],
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": (
-                                    "Write down the exact English words spoken in this "
-                                    "short audio clip, like closed captions. "
-                                    "Just the words, nothing else."
-                                ),
-                            },
-                            {
-                                "type": "input_audio",
-                                "input_audio": {
-                                    "data": base64.b64encode(mp3).decode(),
-                                    "format": "mp3",
-                                },
-                            },
-                        ],
-                    }
-                ],
-            },
-        )
-        try:
-            return str(resp.json()["choices"][0]["message"]["content"] or "")
-        except (KeyError, IndexError) as e:
-            raise ServerException(
-                codes.AV_UPSTREAM_FAILED, f"TTS 校验转写响应异常：{e}"
-            ) from e
 
     # ---------------- llm ----------------
 

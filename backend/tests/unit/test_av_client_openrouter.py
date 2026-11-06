@@ -165,9 +165,9 @@ def _pcm_sse(*parts: bytes) -> bytes:
     )
 
 
-def _speech_handler(transcripts: list[str], captured: dict | None = None):
-    """speech（stream）与转写（非 stream）双路 mock；转写按次取 transcripts。"""
-    counts = {"speech": 0, "transcribe": 0}
+def _speech_handler(captured: dict | None = None):
+    """speech（stream）mock；记录是否发生过非 stream 的额外调用（如转写）。"""
+    counts = {"speech": 0, "other": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
@@ -176,9 +176,8 @@ def _speech_handler(transcripts: list[str], captured: dict | None = None):
             if captured is not None and counts["speech"] == 1:
                 captured.update(payload)
             return httpx.Response(200, content=_pcm_sse(b"pcm-a", b"pcm-b"))
-        counts["transcribe"] += 1
-        text = transcripts[min(counts["transcribe"] - 1, len(transcripts) - 1)]
-        return httpx.Response(200, json={"choices": [{"message": {"content": text}}]})
+        counts["other"] += 1
+        return httpx.Response(200, json={"choices": [{"message": {"content": ""}}]})
 
     return handler, counts
 
@@ -193,41 +192,17 @@ def fake_transcode(monkeypatch):
     monkeypatch.setattr(mod, "_pcm16_to_mp3", _fake)
 
 
-async def test_generate_speech_repeat_prompt_pcm16_and_verify(fake_transcode):
+async def test_generate_speech_repeat_prompt_pcm16_single_call(fake_transcode):
     captured: dict = {}
-    handler, counts = _speech_handler(["Hi there"], captured)
+    handler, counts = _speech_handler(captured)
     out = await make_client(handler).generate_speech("Hi there", "openai/gpt-audio", "alloy")
     assert out == b"MP3:pcm-apcm-b"
     # OpenAI 流式音频仅支持 pcm16；台词用 Repeat after me 包裹；系统指令要求慢速童声
     assert captured["audio"] == {"voice": "alloy", "format": "pcm16"}
     assert captured["messages"][1]["content"] == 'Repeat after me exactly: "Hi there"'
     assert "slowly" in captured["messages"][0]["content"]
-    assert counts == {"speech": 1, "transcribe": 1}
-
-
-async def test_generate_speech_retries_when_transcript_mismatches(fake_transcode):
-    handler, counts = _speech_handler(
-        ["Hello Max, what can I do for you today?", "Hi there"]
-    )
-    out = await make_client(handler).generate_speech("Hi there", "m", "alloy")
-    assert out == b"MP3:pcm-apcm-b"
-    assert counts["speech"] == 2 and counts["transcribe"] == 2
-
-
-async def test_generate_speech_fails_after_retries_with_heard_text(fake_transcode):
-    handler, counts = _speech_handler(["something else entirely"])
-    with pytest.raises(ServerException) as ei:
-        await make_client(handler).generate_speech("Hi there", "m", "alloy")
-    assert ei.value.code == codes.AV_UPSTREAM_FAILED
-    assert "something else entirely" in ei.value.message
-    assert counts["speech"] == 3  # 最多 3 次尝试
-
-
-async def test_generate_speech_accepts_minor_variation(fake_transcode):
-    # 转写常见差异（缩写/标点/大小写）不应触发重试
-    handler, counts = _speech_handler(["hi there!"])
-    await make_client(handler).generate_speech("Hi there.", "m", "alloy")
-    assert counts["speech"] == 1
+    # 不做转写自检（Robert 拍板：省 token，人工判断），只发一次请求
+    assert counts == {"speech": 1, "other": 0}
 
 
 async def test_generate_speech_no_audio_raises():
@@ -252,7 +227,7 @@ async def test_generate_speech_uses_configured_ffmpeg_bin(monkeypatch):
         return b"mp3"
 
     monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
-    handler, _ = _speech_handler(["Hi"])
+    handler, _ = _speech_handler()
     client = OpenRouterAvClient(
         api_key="k", base_url=BASE,
         transport=httpx.MockTransport(handler), poll_interval=0.0,
@@ -260,16 +235,6 @@ async def test_generate_speech_uses_configured_ffmpeg_bin(monkeypatch):
     )
     assert await client.generate_speech("Hi", "m", "alloy") == b"mp3"
     assert seen == {"bin": "/opt/ffmpeg-full/bin/ffmpeg", "tempo": 0.9}
-
-
-def test_spoken_matches_normalization():
-    from app.infrastructure.ai.av_client_openrouter import _spoken_matches
-
-    assert _spoken_matches("Hello! I am Max.", "hello i am max")
-    assert _spoken_matches("I am Max.", "I'm Max!")
-    assert not _spoken_matches(
-        "Hello! I am Max.", "Hello Max, it's great to meet you. What would you like me to do?"
-    )
 
 
 # ---------------- json ----------------
