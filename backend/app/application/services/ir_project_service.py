@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 import logging
+import re
 import uuid
 from pathlib import Path
 
 from app.application.dto.invest_report import (
+    ChapterDetailOut,
     ChapterMetaOut,
     ProjectDetailOut,
     ProjectSummaryOut,
@@ -26,6 +29,7 @@ from app.domain.models.invest_report import (
     ParseState,
     TemplateStatus,
     derive_project_status,
+    resolve_tbd_in_content,
     unresolved_tbds,
     validate_report_type,
 )
@@ -251,6 +255,186 @@ class IrProjectService:
                     {"chapter_id": chapter.id, "title": chapter.title, "reason": item.reason}
                 )
         return out
+
+    # ---------------- 研究与状态 ----------------
+
+    async def start_research(
+        self, project_id: int, chapter_ids: list[int] | None, confirm: bool = False
+    ) -> dict:
+        del confirm  # 2046 预留：未保存编辑由前端本地确认，后端暂不校验
+        await self._get_project(project_id)
+        chapters = await self._uow.ir_chapters.list_by_project(project_id)
+        if chapter_ids:
+            targets = [c.id for c in chapters if c.id in chapter_ids]
+        else:
+            targets = [c.id for c in chapters if c.state != ChapterState.DONE]
+        enqueued = await self._queue.enqueue(project_id, targets)
+        return {"enqueued": enqueued}
+
+    def cancel_queue(self, project_id: int) -> dict:
+        return {"cancelled": self._queue.cancel_project(project_id)}
+
+    async def get_status(self, project_id: int, feed_after: int) -> dict:
+        await self._get_project(project_id)
+        chapters = await self._uow.ir_chapters.list_by_project(project_id)
+        pending, running = self._queue.counts(project_id)
+        return {
+            "status": derive_project_status(chapters, pending + running > 0),
+            "queue": {
+                "pending": pending,
+                "running": running,
+                "paused": self._queue.paused,
+                "paused_reason": self._queue.paused_reason,
+            },
+            "chapters": [
+                {
+                    "id": c.id,
+                    "state": c.state,
+                    "tbd_count": len(unresolved_tbds(c.content)),
+                    "version": c.version,
+                    "error": c.error,
+                }
+                for c in chapters
+            ],
+            "tbd_count": sum(len(unresolved_tbds(c.content)) for c in chapters),
+            "feed": self._queue.feed(project_id, feed_after),
+        }
+
+    # ---------------- 章节与编辑 ----------------
+
+    async def _get_chapter(self, project_id: int, chapter_id: int):
+        chapter = ensure_found(
+            await self._uow.ir_chapters.find_by_id(chapter_id), codes.IR_NOT_FOUND, "章节不存在"
+        )
+        if chapter.project_id != project_id:
+            raise ParamException(codes.IR_NOT_FOUND, "章节不存在")
+        return chapter
+
+    async def get_chapter(self, project_id: int, chapter_id: int) -> dict:
+        await self._get_project(project_id)
+        chapter = await self._get_chapter(project_id, chapter_id)
+        return {"chapter": ChapterDetailOut.build(chapter)}
+
+    @staticmethod
+    def _prune_content(content: dict) -> dict:
+        """重算引用/tbd 子集：仅保留正文仍引用的（人工删标记 = 解除关联）。"""
+        text_all = "".join(p["text"] for p in content.get("paragraphs", []))
+        used_c = {int(m) for m in re.findall(r"⟦c:(\d+)⟧", text_all)}
+        used_t = {int(m) for m in re.findall(r"⟦tbd:(\d+)⟧", text_all)}
+        content["citations"] = [c for c in content.get("citations", []) if c["id"] in used_c]
+        for i, c in enumerate(content["citations"], start=1):
+            c["n"] = i
+        content["tbds"] = [
+            t for t in content.get("tbds", []) if t["id"] in used_t or t.get("resolved")
+        ]
+        return content
+
+    async def update_paragraph(
+        self, project_id: int, chapter_id: int, paragraph_id: str, text: str
+    ) -> dict:
+        project = await self._get_project(project_id)
+        chapter = await self._get_chapter(project_id, chapter_id)
+        chapter.ensure_not_busy()
+        content = copy.deepcopy(chapter.content)
+        para = next((p for p in content["paragraphs"] if p["id"] == paragraph_id), None)
+        if para is None:
+            raise ParamException(codes.IR_NOT_FOUND, "段落不存在")
+        para["text"] = text
+        chapter.bump_version(self._prune_content(content))
+        project.touch()
+        await self._uow.commit()
+        return {"chapter": ChapterDetailOut.build(chapter)}
+
+    async def rewrite_paragraph(
+        self, project_id: int, chapter_id: int, paragraph_id: str, instruction: str
+    ) -> dict:
+        project = await self._get_project(project_id)
+        chapter = await self._get_chapter(project_id, chapter_id)
+        chapter.ensure_not_busy()
+        content = copy.deepcopy(chapter.content)
+        para = next((p for p in content["paragraphs"] if p["id"] == paragraph_id), None)
+        if para is None:
+            raise ParamException(codes.IR_NOT_FOUND, "段落不存在")
+        new_text = await self._agent.rewrite_paragraph(
+            para["text"], instruction, list(content.get("citations", []))
+        )
+        known = {c["id"] for c in content.get("citations", [])} | {
+            t["id"] for t in content.get("tbds", [])
+        }
+        para["text"] = re.sub(
+            r"⟦(c|tbd):(\d+)⟧",
+            lambda m: m.group(0) if int(m.group(2)) in known else "",
+            new_text,
+        )
+        chapter.bump_version(self._prune_content(content))
+        project.touch()
+        await self._uow.commit()
+        return {"chapter": ChapterDetailOut.build(chapter)}
+
+    async def resolve_tbd(self, project_id: int, tbd_id: int, value: str) -> dict:
+        project = await self._get_project(project_id)
+        chapters = await self._uow.ir_chapters.list_by_project(project_id)
+        for chapter in chapters:
+            if any(t.get("id") == tbd_id for t in chapter.content.get("tbds", [])):
+                chapter.ensure_not_busy()
+                chapter.bump_version(resolve_tbd_in_content(chapter.content, tbd_id, value))
+                project.touch()
+                await self._uow.commit()
+                return {"chapter": ChapterDetailOut.build(chapter)}
+        raise ParamException(codes.IR_NOT_FOUND, "待补充项不存在")
+
+    # ---------------- 对话 ----------------
+
+    async def list_chat(self, project_id: int, limit: int = 50) -> dict:
+        await self._get_project(project_id)
+        messages = await self._uow.ir_chats.list_by_project(project_id, limit)
+        return {
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "chapter_id": m.chapter_id,
+                    "updated_chapter_ids": list(m.updated_chapter_ids),
+                    "ts": m.created_at.isoformat(),
+                }
+                for m in messages
+            ]
+        }
+
+    async def send_chat(
+        self, project_id: int, message: str, chapter_id: int | None
+    ) -> dict:
+        project = await self._get_project(project_id)
+        chapter = None
+        if chapter_id is not None:
+            chapter = await self._get_chapter(project_id, chapter_id)
+            chapter.ensure_not_busy()
+        self._add_chat(project_id, "user", message, chapter_id)
+        chapter_dict = (
+            {
+                "title": chapter.title,
+                "paragraphs": chapter.content.get("paragraphs", []),
+                "citations": chapter.content.get("citations", []),
+            }
+            if chapter is not None
+            else None
+        )
+        outcome = await self._agent.chat(
+            f"{project.title}（{project.type}）", chapter_dict, message
+        )
+        updated: list[int] = []
+        if outcome.updated and outcome.paragraphs and chapter is not None:
+            content = copy.deepcopy(chapter.content)
+            content["paragraphs"] = [
+                {"id": f"p{i + 1}", "text": text} for i, text in enumerate(outcome.paragraphs)
+            ]
+            chapter.bump_version(self._prune_content(content))
+            updated = [chapter.id]
+        self._add_chat(project_id, "assistant", outcome.reply, chapter_id, updated)
+        project.touch()
+        await self._uow.commit()
+        return {"reply": outcome.reply, "updated_chapter_ids": updated}
 
     # ---------------- 对话落库（供第二批复用） ----------------
 

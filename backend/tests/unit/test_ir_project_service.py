@@ -182,3 +182,116 @@ async def test_delete_source_keeps_chapter_citations(service, uow):
     assert "ir_sources.delete" in uow.calls
     # 引用快照自包含，不随资料删除而改动
     assert chapter.content["citations"][0]["title"] == "BP · 第 12 页"
+
+
+# ---------------- 第二批：研究/状态/编辑/对话 ----------------
+
+
+def _done_chapter(id_: int = 31) -> IrChapter:
+    c = IrChapter.create(1, "industry", "三、行业分析", 1)
+    c.id = id_
+    c.state = ChapterState.DONE
+    c.version = 1
+    c.content = {
+        "paragraphs": [
+            {"id": "p1", "text": "营收 3.2 亿元⟦c:1⟧。"},
+            {"id": "p2", "text": "竞对估值为⟦tbd:2⟧。"},
+        ],
+        "citations": [{"id": 1, "n": 1, "source_type": "file", "title": "BP", "url": None,
+                       "source_id": 5, "page": 12, "quote": "3.2 亿元", "captured_at": "2026-11"}],
+        "tbds": [{"id": 2, "reason": "无来源", "value": None, "resolved": False}],
+    }
+    return c
+
+
+async def test_start_research_default_targets_not_done(service, uow, queue):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    done, pending = _done_chapter(31), IrChapter.create(1, "risks", "八、风险", 2)
+    pending.id = 32
+    uow.ir_chapters.list_by_project = AsyncMock(return_value=[done, pending])
+    queue.enqueue = AsyncMock(return_value=[32])
+    out = await service.start_research(1, None, confirm=False)
+    queue.enqueue.assert_awaited_once_with(1, [32])
+    assert out == {"enqueued": [32]}
+
+
+async def test_get_status_merges_queue_and_feed(service, uow, queue):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.ir_chapters.list_by_project = AsyncMock(return_value=[_done_chapter(31)])
+    queue.counts = MagicMock(return_value=(1, 1))
+    queue.paused = False
+    queue.paused_reason = None
+    queue.feed = MagicMock(return_value=[{"id": 9, "chapter_id": 31, "kind": "search",
+                                          "text": "t", "ref": None, "ts": "now"}])
+    out = await service.get_status(1, feed_after=5)
+    queue.feed.assert_called_once_with(1, 5)
+    assert out["status"] == "researching"
+    assert out["queue"]["pending"] == 1 and out["queue"]["running"] == 1
+    assert out["chapters"][0]["tbd_count"] == 1
+    assert out["feed"][0]["id"] == 9
+
+
+async def test_update_paragraph_busy_2044(service, uow):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    c.state = ChapterState.RESEARCHING
+    uow.ir_chapters.find_by_id = AsyncMock(return_value=c)
+    with pytest.raises(ParamException) as e:
+        await service.update_paragraph(1, 31, "p1", "x")
+    assert e.value.code == codes.IR_CHAPTER_BUSY
+
+
+async def test_update_paragraph_recomputes_citation_subset(service, uow):
+    """删掉正文里的 ⟦c:1⟧ 标记 → 引用从 content 中移除。"""
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    uow.ir_chapters.find_by_id = AsyncMock(return_value=c)
+    out = await service.update_paragraph(1, 31, "p1", "营收 3.2 亿元（人工改写，无引用）。")
+    assert out["chapter"].citations == []
+    assert c.version == 2
+    # tbd 仍被 p2 引用，保留
+    assert len(out["chapter"].tbds) == 1
+
+
+async def test_rewrite_paragraph_keeps_known_markers_only(service, uow):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    uow.ir_chapters.find_by_id = AsyncMock(return_value=c)
+
+    async def fake_rewrite(text, instruction, catalog):
+        return f"重写后⟦c:1⟧，加个幽灵⟦c:999⟧。"
+
+    service._agent.rewrite_paragraph = fake_rewrite
+    out = await service.rewrite_paragraph(1, 31, "p1", "更简洁")
+    p1 = next(p for p in out["chapter"].paragraphs if p["id"] == "p1")
+    assert "⟦c:1⟧" in p1["text"] and "⟦c:999⟧" not in p1["text"]
+
+
+async def test_resolve_tbd_updates_content(service, uow):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    uow.ir_chapters.list_by_project = AsyncMock(return_value=[c])
+    out = await service.resolve_tbd(1, 2, "约 12 亿元")
+    text = out["chapter"].paragraphs[1]["text"]
+    assert "约 12 亿元" in text and "⟦tbd:2⟧" not in text
+
+
+async def test_chat_busy_chapter_2044(service, uow):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    c.state = ChapterState.UPDATING
+    uow.ir_chapters.find_by_id = AsyncMock(return_value=c)
+    with pytest.raises(ParamException) as e:
+        await service.send_chat(1, "改一下", 31)
+    assert e.value.code == codes.IR_CHAPTER_BUSY
+
+
+async def test_chat_applies_update_and_persists_messages(service, uow):
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    c = _done_chapter(31)
+    uow.ir_chapters.find_by_id = AsyncMock(return_value=c)
+    out = await service.send_chat(1, "补充客户集中度风险", 31)
+    assert out["updated_chapter_ids"] == [31]
+    assert c.version == 2
+    adds = [x for x in uow.calls if x == "ir_chats.add"]
+    assert len(adds) == 2  # user + assistant

@@ -178,3 +178,19 @@ class ProjectDetailOut(ProjectSummaryOut):
     chapters: list[ChapterMetaOut]
     sources: list[SourceOut]
     checklist: list[str]
+
+
+class ChapterDetailOut(ChapterMetaOut):
+    paragraphs: list[dict]
+    citations: list[dict]
+    tbds: list[dict]
+
+    @classmethod
+    def build(cls, c) -> "ChapterDetailOut":
+        meta = ChapterMetaOut.build(c)
+        return cls(
+            **meta.model_dump(),
+            paragraphs=list(c.content.get("paragraphs", [])),
+            citations=list(c.content.get("citations", [])),
+            tbds=list(c.content.get("tbds", [])),
+        )
