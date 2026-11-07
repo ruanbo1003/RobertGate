@@ -15,7 +15,7 @@ from app.application.dto.invest_report import (
     ProjectSummaryOut,
     SourceOut,
 )
-from app.application.ports import IrAgent, TaskRunner
+from app.application.ports import DocumentParser, IrAgent, TaskRunner
 from app.application.services.av_queue import AvStorage
 from app.domain.errors import ParamException, ServerException, codes, ensure_found
 from app.domain.models.invest_report import (
@@ -35,7 +35,6 @@ from app.domain.models.invest_report import (
     validate_report_type,
 )
 from app.domain.repositories.uow import UnitOfWork
-from app.infrastructure.ir_parsers import parse_document, parse_url
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +54,7 @@ class IrProjectService:
         storage: AvStorage,
         runner: TaskRunner,
         uow_factory,
+        parser: DocumentParser,
         exporter=None,
     ) -> None:
         self._uow = uow
@@ -63,6 +63,7 @@ class IrProjectService:
         self._storage = storage
         self._runner = runner
         self._uow_factory = uow_factory
+        self._parser = parser
         self._exporter = exporter
 
     # ---------------- 内部 ----------------
@@ -179,9 +180,9 @@ class IrProjectService:
             kind, file_path, url = source.kind, source.file_path, source.url
         try:
             if kind == "url":
-                text, quality = await parse_url(url or ""), "ok"
+                text, quality = await self._parser.parse_url(url or ""), "ok"
             else:
-                text, quality = await parse_document(
+                text, quality = await self._parser.parse_document(
                     self._storage.absolute(file_path or ""), self._agent
                 )
         except Exception as e:  # noqa: BLE001
@@ -254,9 +255,12 @@ class IrProjectService:
         for item in draft.items:
             chapter = by_key.get(item.chapter_key)
             if chapter is not None:
+                chapter.mark_stale()  # spec §9：受影响的成稿章节标「已过期」
                 out.append(
                     {"chapter_id": chapter.id, "title": chapter.title, "reason": item.reason}
                 )
+        if out:
+            await self._uow.commit()
         return out
 
     # ---------------- 研究与状态 ----------------

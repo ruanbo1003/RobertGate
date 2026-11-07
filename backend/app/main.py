@@ -32,6 +32,11 @@ async def lifespan(app: FastAPI):
     from app.infrastructure.legal.factory import get_legal_kb
 
     app.state.legal_kb_task = asyncio.create_task(get_legal_kb().build_index())
+    # invest-reports：研究队列为内存态，重启后回收卡死的 researching/updating 章节
+    from app.application.services.ir_queue import recover_stuck_chapters
+    from app.infrastructure.repositories.uow import new_uow
+
+    await recover_stuck_chapters(new_uow)
     yield
 
 

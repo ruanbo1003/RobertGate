@@ -117,6 +117,16 @@ class AvGenClient(Protocol):
         ...
 
 
+class DocumentParser(Protocol):
+    """invest-reports 文档/URL 解析端口（实现：infrastructure/ir_parsers.py）。"""
+
+    async def parse_document(self, path: Path, agent: "IrAgent") -> tuple[str, str]:
+        """返回 (text, quality)；quality: ok | low。"""
+        ...
+
+    async def parse_url(self, url: str) -> str: ...
+
+
 class IrAgent(Protocol):
     """invest-reports Agent 端口（实现：infrastructure/ai/ir_agent_*）。
 

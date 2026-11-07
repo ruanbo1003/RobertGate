@@ -35,6 +35,7 @@ from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.ai.image_fetch import fetch_image_bytes
 from app.infrastructure.av_compose import FfmpegComposer
 from app.infrastructure.av_storage import FsAvStorage
+from app.infrastructure.ir_parsers import FsDocumentParser
 from app.infrastructure.data.av_models import default_model, default_voice, reference_mode
 from app.infrastructure.legal.factory import get_legal_chat, get_legal_kb
 from app.infrastructure.data.english_data import ENGLISH_THEMES
@@ -211,6 +212,7 @@ async def get_ir_library_service(
         storage=get_ir_storage(),
         runner=get_task_runner(),
         uow_factory=new_uow,
+        parser=FsDocumentParser(),
     )
 
 
@@ -226,6 +228,7 @@ async def get_ir_project_service(
         storage=get_ir_storage(),
         runner=get_task_runner(),
         uow_factory=new_uow,
+        parser=FsDocumentParser(),
         exporter=build_docx,
     )
 

@@ -10,7 +10,7 @@ import logging
 import uuid
 
 from app.application.dto.invest_report import LibraryOut, SampleOut, TemplateOut
-from app.application.ports import IrAgent, TaskRunner
+from app.application.ports import DocumentParser, IrAgent, TaskRunner
 from app.application.services.av_queue import AvStorage
 from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.invest_report import (
@@ -23,7 +23,6 @@ from app.domain.models.invest_report import (
     validate_report_type,
 )
 from app.domain.repositories.uow import UnitOfWork
-from app.infrastructure.ir_parsers import parse_document
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +31,15 @@ _LEARN_TEXT_LIMIT = 20_000  # 每份范本喂给 LLM 的最大字符数
 
 class IrLibraryService:
     def __init__(
-        self, uow: UnitOfWork, agent: IrAgent, storage: AvStorage, runner: TaskRunner, uow_factory
+        self, uow: UnitOfWork, agent: IrAgent, storage: AvStorage, runner: TaskRunner,
+        uow_factory, parser: DocumentParser,
     ) -> None:
         self._uow = uow
         self._agent = agent
         self._storage = storage
         self._runner = runner
         self._uow_factory = uow_factory
+        self._parser = parser
 
     async def get_library(self) -> LibraryOut:
         out: dict = {}
@@ -81,7 +82,7 @@ class IrLibraryService:
                 return
             path = self._storage.absolute(sample.file_path)
         try:
-            text, _quality = await parse_document(path, self._agent)
+            text, _quality = await self._parser.parse_document(path, self._agent)
         except Exception as e:  # noqa: BLE001
             logger.warning("范本解析失败 sample=%s: %s", sample_id, e)
             async with self._uow_factory() as uow:

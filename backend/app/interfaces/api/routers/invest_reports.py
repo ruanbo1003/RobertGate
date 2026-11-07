@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mimetypes
 
-from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from app.interfaces.api.deps import (
@@ -46,7 +46,7 @@ async def get_library(
 
 @router.post("/samples")
 async def upload_samples(
-    type: str,
+    type: str = Form(...),
     files: list[UploadFile] = File(...),
     _user_id: str = Depends(get_current_user_id),
     service=Depends(get_ir_library_service),

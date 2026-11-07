@@ -72,10 +72,17 @@ def service(uow):
 
     queue = MagicMock()
     queue.counts = MagicMock(return_value=(0, 0))
+    class _P:
+        async def parse_document(self, path, agent):
+            return "", "ok"
+
+        async def parse_url(self, url):
+            return ""
+
     return IrProjectService(
         uow=uow, agent=MockIrAgent(), queue=queue,
         storage=FakeStorage(), runner=MagicMock(), uow_factory=uow_factory,
-        exporter=build_docx,
+        parser=_P(), exporter=build_docx,
     )
 
 

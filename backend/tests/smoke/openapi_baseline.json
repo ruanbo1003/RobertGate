@@ -47,9 +47,14 @@
             },
             "title": "Files",
             "type": "array"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
           }
         },
         "required": [
+          "type",
           "files"
         ],
         "title": "Body_upload_samples_api_v1_invest_reports_samples_post",
@@ -5881,15 +5886,6 @@
       "post": {
         "operationId": "upload_samples_api_v1_invest_reports_samples_post",
         "parameters": [
-          {
-            "in": "query",
-            "name": "type",
-            "required": true,
-            "schema": {
-              "title": "Type",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "authorization",

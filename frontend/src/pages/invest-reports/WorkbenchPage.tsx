@@ -143,8 +143,13 @@ export default function WorkbenchPage() {
     if (res.code === 2045 && res.data && 'pending' in res.data) {
       setExportPending(res.data.pending)
     } else if (res.code === 0 && 'download_url' in res.data) {
-      notify('已生成 Word，开始下载')
-      if (res.data.download_url !== '#mock-download') window.open(res.data.download_url, '_blank')
+      if (res.data.download_url === '#mock-download') {
+        notify('已生成 Word（mock 模式不实际下载）')
+      } else if (await api.downloadReport(pid)) {
+        notify('已生成 Word，开始下载')
+      } else {
+        notify('成稿已生成，但下载失败，请重试')
+      }
     } else {
       notify(res.message)
     }

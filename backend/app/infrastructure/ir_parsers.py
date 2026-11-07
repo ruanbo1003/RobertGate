@@ -108,3 +108,13 @@ async def parse_url(url: str) -> str:
         )
     text = _TAG_STRIP_RE.sub(" ", resp.text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+class FsDocumentParser:
+    """DocumentParser 端口实现：组合根注入给 application 层。"""
+
+    async def parse_document(self, path: Path, agent) -> tuple[str, str]:
+        return await parse_document(path, agent)
+
+    async def parse_url(self, url: str) -> str:
+        return await parse_url(url)

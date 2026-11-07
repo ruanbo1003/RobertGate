@@ -83,6 +83,17 @@ def _stamp_ids(uow) -> None:
         getattr(uow, name).add = MagicMock(side_effect=stamp(name))
 
 
+class FakeParser:
+    def __init__(self):
+        self.result = ("BP 全文", "low")
+
+    async def parse_document(self, path, agent):
+        return self.result
+
+    async def parse_url(self, url):
+        return "网页正文"
+
+
 @pytest.fixture
 def service(uow, queue):
     _stamp_ids(uow)
@@ -93,6 +104,7 @@ def service(uow, queue):
     return IrProjectService(
         uow=uow, agent=MockIrAgent(), queue=queue,
         storage=FakeStorage(), runner=InlineRunner(), uow_factory=uow_factory,
+        parser=FakeParser(),
     )
 
 
@@ -122,13 +134,7 @@ async def test_upload_source_rejects_bad_ext(service, uow):
     assert e.value.code == codes.IR_PARAM_INVALID
 
 
-async def test_upload_source_parses_async(service, uow, monkeypatch):
-    async def fake_parse(path, agent):
-        return "BP 全文", "low"
-
-    import app.application.services.ir_project_service as mod
-    monkeypatch.setattr(mod, "parse_document", fake_parse)
-
+async def test_upload_source_parses_async(service, uow):
     uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
     src = IrSource.create_file(1, "bp.pdf", "p")
     src.id = 9
@@ -295,3 +301,17 @@ async def test_chat_applies_update_and_persists_messages(service, uow):
     assert c.version == 2
     adds = [x for x in uow.calls if x == "ir_chats.add"]
     assert len(adds) == 2  # user + assistant
+
+
+async def test_analyze_impact_marks_affected_chapters_stale(service, uow):
+    """增量更新链：影响分析命中的已成稿章节标 stale（spec §9 状态机触发点）。"""
+    uow.ir_projects.find_by_id = AsyncMock(return_value=_project())
+    src = IrSource.create_file(1, "新资料.pdf", "p")
+    src.id = 5
+    src.parse_state = ParseState.READY
+    src.parsed_text = "竞对融资信息"
+    uow.ir_sources.find_by_id = AsyncMock(return_value=src)
+    done = _done_chapter(31)
+    uow.ir_chapters.list_by_project = AsyncMock(return_value=[done])
+    out = await service.analyze_impact(1, 5)
+    assert out and done.state == ChapterState.STALE

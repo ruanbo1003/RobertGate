@@ -63,8 +63,26 @@ def _stamp_ids(uow) -> None:
         getattr(uow, name).add = MagicMock(side_effect=stamp(name))
 
 
+class FakeParser:
+    def __init__(self):
+        self.result = ("全文", "ok")
+        self.calls: list[str] = []
+
+    async def parse_document(self, path, agent):
+        self.calls.append(str(path))
+        return self.result
+
+    async def parse_url(self, url):
+        return "网页正文"
+
+
 @pytest.fixture
-def service(uow, storage):
+def parser():
+    return FakeParser()
+
+
+@pytest.fixture
+def service(uow, storage, parser):
     _stamp_ids(uow)
     @asynccontextmanager
     async def uow_factory():
@@ -72,7 +90,7 @@ def service(uow, storage):
 
     svc = IrLibraryService(
         uow=uow, agent=MockIrAgent(), storage=storage,
-        runner=InlineRunner(), uow_factory=uow_factory,
+        runner=InlineRunner(), uow_factory=uow_factory, parser=parser,
     )
     return svc
 
@@ -89,16 +107,7 @@ async def test_upload_rejects_oversize(service):
     assert e.value.code == codes.IR_PARAM_INVALID
 
 
-async def test_upload_saves_and_spawns_parse(service, uow, storage, monkeypatch):
-    parsed: list[str] = []
-
-    async def fake_parse(path, agent):
-        parsed.append(str(path))
-        return "全文", "ok"
-
-    import app.application.services.ir_library_service as mod
-    monkeypatch.setattr(mod, "parse_document", fake_parse)
-
+async def test_upload_saves_and_spawns_parse(service, uow, storage, parser):
     sample = IrSample.create("advice", "a.docx", "samples/x.docx")
     sample.id = 7
     uow.ir_samples.find_by_id = AsyncMock(return_value=sample)
@@ -107,7 +116,7 @@ async def test_upload_saves_and_spawns_parse(service, uow, storage, monkeypatch)
     assert len(out) == 1
     assert list(storage.saved.values()) == [b"content"]
     await asyncio.sleep(0.05)  # 等后台解析
-    assert parsed and sample.parse_state == ParseState.READY and sample.parsed_text == "全文"
+    assert parser.calls and sample.parse_state == ParseState.READY and sample.parsed_text == "全文"
 
 
 async def test_learn_requires_ready_samples(service, uow):

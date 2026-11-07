@@ -43,7 +43,7 @@ class IrResearchQueue:
         self._runner = runner
         self._poll = poll_interval
         self._sem = asyncio.Semaphore(1)
-        self._items: dict[int, str] = {}  # chapter_id -> queued | running
+        self._items: dict[int, tuple[int, str]] = {}  # chapter_id -> (project_id, queued|running)
         self._cancelled: set[int] = set()
         self._paused = False
         self._paused_reason: str | None = None
@@ -65,9 +65,8 @@ class IrResearchQueue:
         return len(self._items)
 
     def counts(self, project_id: int) -> tuple[int, int]:
-        del project_id  # 单用户规模：队列不分项目统计
-        pending = sum(1 for s in self._items.values() if s == "queued")
-        running = sum(1 for s in self._items.values() if s == "running")
+        pending = sum(1 for pid, s in self._items.values() if pid == project_id and s == "queued")
+        running = sum(1 for pid, s in self._items.values() if pid == project_id and s == "running")
         return pending, running
 
     def feed(self, project_id: int, after: int = 0) -> list[dict]:
@@ -111,16 +110,15 @@ class IrResearchQueue:
             if enqueued:
                 await uow.commit()
         for cid in enqueued:
-            self._items[cid] = "queued"
+            self._items[cid] = (project_id, "queued")
             self._cancelled.discard(cid)
             self._runner.spawn(self._run(project_id, cid))
         return enqueued
 
     def cancel_project(self, project_id: int) -> int:
-        del project_id
         cancelled = 0
-        for cid, state in list(self._items.items()):
-            if state == "queued":
+        for cid, (pid, state) in list(self._items.items()):
+            if pid == project_id and state == "queued":
                 self._cancelled.add(cid)
                 cancelled += 1
         return cancelled
@@ -135,7 +133,7 @@ class IrResearchQueue:
                 if chapter_id in self._cancelled or self._paused:
                     await self._revert_pending(chapter_id)
                     return
-                self._items[chapter_id] = "running"
+                self._items[chapter_id] = (project_id, "running")
                 await self._research(project_id, chapter_id)
         finally:
             self._items.pop(chapter_id, None)
@@ -222,7 +220,23 @@ class IrResearchQueue:
                 await uow.commit()
 
     async def _revert_all_queued(self) -> None:
-        for cid, state in list(self._items.items()):
+        for cid, (_pid, state) in list(self._items.items()):
             if state == "queued":
                 self._cancelled.add(cid)
                 await self._revert_pending(cid)
+
+
+async def recover_stuck_chapters(uow_factory) -> int:
+    """进程重启恢复：把残留 researching/updating 的章节回收为 pending。
+
+    队列是内存态，崩溃/重启后这些章节否则会永久卡死（无法编辑也无法重研究）。
+    """
+    async with uow_factory() as uow:
+        stuck = await uow.ir_chapters.list_stuck()
+        for chapter in stuck:
+            chapter.mark_pending()
+        if stuck:
+            await uow.commit()
+        if stuck:
+            logger.warning("启动恢复：%s 个章节由 researching/updating 回收为 pending", len(stuck))
+        return len(stuck)

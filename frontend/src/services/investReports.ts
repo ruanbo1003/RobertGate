@@ -202,6 +202,24 @@ export function sendChat(
 
 // ---------------- 导出 ----------------
 
+/** 带鉴权下载成稿：download 接口需要 Bearer 头，window.open 会 401。 */
+export async function downloadReport(id: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/projects/${id}/download`, { headers: authHeaders() })
+    if (!res.ok) return false
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `invest-report-${id}.docx`
+    a.click()
+    URL.revokeObjectURL(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function exportReport(
   id: number,
 ): Promise<ApiResponse<{ download_url: string } | { pending: ExportPendingItem[] }>> {

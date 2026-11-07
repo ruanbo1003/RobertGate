@@ -46,6 +46,11 @@ class IrProjectRepo(SqlRepo[IrProject]):
 class IrChapterRepo(SqlRepo[IrChapter]):
     model = IrChapter
 
+    async def list_stuck(self) -> list[IrChapter]:
+        return await self._all(
+            select(IrChapter).where(IrChapter.state.in_(["researching", "updating"]))
+        )
+
     async def list_by_project(self, project_id: int) -> list[IrChapter]:
         return await self._all(
             select(IrChapter)

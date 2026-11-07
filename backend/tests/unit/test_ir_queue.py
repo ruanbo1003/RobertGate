@@ -193,3 +193,59 @@ async def test_agent_called_outside_uow(store, agent):
     await q.enqueue(1, [31])
     await drain(q)
     assert seen["open"] == 0
+
+
+async def test_counts_and_cancel_are_project_scoped(store, agent):
+    """两个项目并存时，counts/cancel 不得跨项目污染。"""
+    # 第二个项目：id=2，章节 41
+    p2 = IrProject.create("第二标的", "advice")
+    p2.id = 2
+    c41 = IrChapter.create(2, "industry", "三、行业分析", 1)
+    c41.id = 41
+    store["chapters"][41] = c41
+    agent.fail = ServerException(codes.IR_UPSTREAM_FAILED, "慢")  # 不让跑完太快
+
+    q = make_queue(store, agent)
+    agent.fail = None
+    gate = asyncio.Event()
+    orig = agent.research_chapter
+
+    async def gated(ctx, on_event):
+        await gate.wait()
+        return await orig(ctx, on_event)
+
+    agent.research_chapter = gated
+    await q.enqueue(1, [31, 32])
+    await q.enqueue(2, [41])
+    # 项目 1：1 running + 1 queued；项目 2：1 queued
+    p1_pending, p1_running = q.counts(1)
+    p2_pending, p2_running = q.counts(2)
+    assert (p1_pending + p1_running) == 2
+    assert (p2_pending + p2_running) == 1
+    # 取消项目 2 不影响项目 1 的排队
+    cancelled = q.cancel_project(2)
+    assert cancelled == 1
+    assert sum(q.counts(1)) == 2
+    gate.set()
+    await drain(q)
+
+
+async def test_recover_stuck_chapters_on_startup(store):
+    """进程重启后 researching/updating 章节必须被回收为 pending。"""
+    from app.application.services.ir_queue import recover_stuck_chapters
+
+    store["chapters"][31].state = ChapterState.RESEARCHING
+    store["chapters"][32].state = ChapterState.UPDATING
+
+    @asynccontextmanager
+    async def uow_factory():
+        uow = MemUow(store)
+        uow.ir_chapters.list_stuck = AsyncMock(
+            return_value=[store["chapters"][31], store["chapters"][32]]
+        )
+        yield uow
+
+    recovered = await recover_stuck_chapters(uow_factory)
+    assert recovered == 2
+    assert store["chapters"][31].state == ChapterState.PENDING
+    assert store["chapters"][32].state == ChapterState.PENDING
