@@ -16,6 +16,7 @@ from app.application.services.av_queue import AvGenerationQueue
 from app.application.services.av_service import AvCharacterService, AvProjectService
 from app.application.services.ir_library_service import IrLibraryService
 from app.application.services.ir_project_service import IrProjectService
+from app.application.services.ir_queue import IrResearchQueue
 from app.application.services.auth_service import AuthService
 from app.application.services.english_service import EnglishService
 from app.application.services.gallery_service import GalleryService
@@ -95,6 +96,15 @@ def get_av_queue() -> AvGenerationQueue:
 @lru_cache
 def get_ir_storage() -> FsAvStorage:
     return FsAvStorage(Path(get_settings().IR_DATA_DIR))
+
+
+@lru_cache
+def get_ir_queue() -> IrResearchQueue:
+    return IrResearchQueue(
+        uow_factory=new_uow,
+        agent=get_ir_agent(),
+        runner=get_task_runner(),
+    )
 
 
 @lru_cache
@@ -207,12 +217,10 @@ async def get_ir_library_service(
 async def get_ir_project_service(
     uow: UnitOfWork = Depends(get_uow),
 ) -> IrProjectService:
-    from app.application.services.ir_queue import get_noop_queue
-
     return IrProjectService(
         uow=uow,
         agent=get_ir_agent(),
-        queue=get_noop_queue(),
+        queue=get_ir_queue(),
         storage=get_ir_storage(),
         runner=get_task_runner(),
         uow_factory=new_uow,
