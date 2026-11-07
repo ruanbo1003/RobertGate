@@ -74,6 +74,8 @@ EXPECTED_ROUTES = {
     ("POST", "/api/v1/invest-reports/projects/{project_id}/tbds/{tbd_id}/resolve"),
     ("GET", "/api/v1/invest-reports/projects/{project_id}/chat"),
     ("POST", "/api/v1/invest-reports/projects/{project_id}/chat"),
+    ("POST", "/api/v1/invest-reports/projects/{project_id}/export"),
+    ("GET", "/api/v1/invest-reports/projects/{project_id}/download"),
     ("GET", "/api/v1/ai-videos/models"),
     ("GET", "/api/v1/ai-videos/characters"),
     ("POST", "/api/v1/ai-videos/characters"),

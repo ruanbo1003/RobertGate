@@ -17,7 +17,7 @@ from app.application.dto.invest_report import (
 )
 from app.application.ports import IrAgent, TaskRunner
 from app.application.services.av_queue import AvStorage
-from app.domain.errors import ParamException, codes, ensure_found
+from app.domain.errors import ParamException, ServerException, codes, ensure_found
 from app.domain.models.invest_report import (
     SOURCE_EXTS,
     UPLOAD_MAX_BYTES,
@@ -30,6 +30,7 @@ from app.domain.models.invest_report import (
     TemplateStatus,
     derive_project_status,
     resolve_tbd_in_content,
+    strip_markers,
     unresolved_tbds,
     validate_report_type,
 )
@@ -54,6 +55,7 @@ class IrProjectService:
         storage: AvStorage,
         runner: TaskRunner,
         uow_factory,
+        exporter=None,
     ) -> None:
         self._uow = uow
         self._agent = agent
@@ -61,6 +63,7 @@ class IrProjectService:
         self._storage = storage
         self._runner = runner
         self._uow_factory = uow_factory
+        self._exporter = exporter
 
     # ---------------- 内部 ----------------
 
@@ -435,6 +438,53 @@ class IrProjectService:
         project.touch()
         await self._uow.commit()
         return {"reply": outcome.reply, "updated_chapter_ids": updated}
+
+    # ---------------- 导出 ----------------
+
+    async def export(self, project_id: int) -> dict:
+        project = await self._get_project(project_id)
+        chapters = await self._uow.ir_chapters.list_by_project(project_id)
+        pending = [
+            {"tbd_id": t["id"], "chapter_id": c.id, "reason": t["reason"]}
+            for c in chapters
+            for t in unresolved_tbds(c.content)
+        ]
+        if pending:
+            raise ParamException(
+                codes.IR_EXPORT_BLOCKED,
+                "存在未处理的「待补充」，请先补全或确认",
+                data={"pending": pending},
+            )
+        done = [c for c in chapters if c.state in (ChapterState.DONE, ChapterState.STALE)]
+        if not done:
+            raise ParamException(codes.IR_NOT_FOUND, "还没有已完成的章节，无法导出")
+        try:
+            data = self._exporter(
+                project.title,
+                project.type,
+                [
+                    {
+                        "title": c.title,
+                        "paragraphs": [
+                            strip_markers(p["text"]) for p in c.content.get("paragraphs", [])
+                        ],
+                    }
+                    for c in sorted(done, key=lambda x: x.order_index)
+                ],
+            )
+        except Exception as e:  # noqa: BLE001
+            raise ServerException(codes.IR_EXPORT_FAILED, f"Word 生成失败：{e}") from e
+        self._storage.save(f"projects/{project_id}/final.docx", data)
+        return {
+            "download_url": f"/api/v1/invest-reports/projects/{project_id}/download"
+        }
+
+    async def download_path(self, project_id: int):
+        await self._get_project(project_id)
+        path = self._storage.absolute(f"projects/{project_id}/final.docx")
+        if not path.is_file():
+            raise ParamException(codes.IR_NOT_FOUND, "还没有生成的成稿，请先导出")
+        return path
 
     # ---------------- 对话落库（供第二批复用） ----------------
 

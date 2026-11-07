@@ -310,3 +310,29 @@ async def send_chat(
     service=Depends(get_ir_project_service),
 ):
     return success(await service.send_chat(project_id, body.message, body.chapter_id))
+
+
+# ---------------- 导出 ----------------
+
+
+@router.post("/projects/{project_id}/export")
+async def export_report(
+    project_id: int,
+    _user_id: str = Depends(get_current_user_id),
+    service=Depends(get_ir_project_service),
+):
+    return success(await service.export(project_id))
+
+
+@router.get("/projects/{project_id}/download")
+async def download_report(
+    project_id: int,
+    _user_id: str = Depends(get_current_user_id),
+    service=Depends(get_ir_project_service),
+):
+    path = await service.download_path(project_id)
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=f"invest-report-{project_id}.docx",
+    )

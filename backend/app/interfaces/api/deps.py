@@ -217,6 +217,8 @@ async def get_ir_library_service(
 async def get_ir_project_service(
     uow: UnitOfWork = Depends(get_uow),
 ) -> IrProjectService:
+    from app.infrastructure.ir_export import build_docx
+
     return IrProjectService(
         uow=uow,
         agent=get_ir_agent(),
@@ -224,6 +226,7 @@ async def get_ir_project_service(
         storage=get_ir_storage(),
         runner=get_task_runner(),
         uow_factory=new_uow,
+        exporter=build_docx,
     )
 
 
