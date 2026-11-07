@@ -4,5 +4,22 @@
   },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest *)",
+      "Bash(npx tsc -b --noEmit)",
+      "Bash(npm run lint)",
+      "Bash(npm run type-check)",
+      "Bash(go test *)",
+      "Bash(/Users/ruanbo/.claude/plugins/cache/claude-plugins-official/superpowers/7.0.0/skills/executing-plans/scripts/task-start *)",
+      "Bash(/Users/ruanbo/.claude/plugins/cache/claude-plugins-official/superpowers/7.0.0/skills/subagent-driven-development/scripts/sdd-workspace *)",
+      "Bash(/Users/ruanbo/.claude/plugins/cache/claude-plugins-official/superpowers/7.0.0/skills/subagent-driven-development/scripts/review-package *)",
+      "mcp__pencil__get_screenshot",
+      "mcp__pencil__get_editor_state",
+      "mcp__pencil__snapshot_layout",
+      "mcp__pencil__batch_get",
+      "mcp__pencil__get_variables"
+    ]
   }
 }
