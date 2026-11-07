@@ -94,7 +94,10 @@ _TAG_STRIP_RE = re.compile(
 async def parse_url(url: str) -> str:
     try:
         async with httpx.AsyncClient(
-            timeout=_URL_TIMEOUT, follow_redirects=True, transport=_url_transport
+            timeout=_URL_TIMEOUT, follow_redirects=True, transport=_url_transport,
+            headers={"User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                                    "Chrome/130.0 Safari/537.36")},
         ) as client:
             resp = await client.get(url)
     except httpx.HTTPError as e:

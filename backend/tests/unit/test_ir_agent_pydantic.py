@@ -102,3 +102,62 @@ async def test_learn_template_via_testmodel():
     with agent.simple_agents["learn"].override(model=TestModel()):
         draft = await agent.learn_template(["范本全文一", "范本全文二"], "advice")
     assert draft.chapters  # TestModel 生成合法结构
+
+
+async def test_llm_response_with_nonstandard_service_tier_is_sanitized():
+    """OpenRouter 会返回 service_tier='provisioned'，openai SDK 字面量不认——传输层剥除。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-1", "object": "chat.completion", "created": 1,
+                "model": "google/gemini-3.8-flash",
+                "service_tier": "provisioned",
+                "choices": [{"index": 0, "finish_reason": "stop",
+                             "message": {"role": "assistant", "content": "重写后的段落。"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+            },
+        )
+
+    agent = PydanticIrAgent(
+        api_key="sk-or-test", base_url=BASE,
+        model="google/gemini-3.8-flash", search_model="m:online",
+        llm_transport=httpx.MockTransport(handler),
+    )
+    out = await agent.rewrite_paragraph("原文", "更简洁", [])
+    assert out == "重写后的段落。"
+
+
+async def test_read_url_impl_never_raises_on_bad_input(monkeypatch):
+    """模型会拿 file:///x、文件名当 URL 读——工具必须返回错误文本而不是炸掉整章。"""
+    agent = make_agent()
+    out1 = await agent.read_url_impl("file:///2")
+    assert "抓取失败" in out1 or "无法读取" in out1
+
+    import app.infrastructure.ai.ir_agent_pydantic as mod
+
+    async def boom(url):
+        raise ServerException(codes.IR_UPSTREAM_FAILED, "URL 抓取失败 (HTTP 403)")
+
+    monkeypatch.setattr(mod, "parse_url", boom)
+    out2 = await agent.read_url_impl("https://example.com/blocked")
+    assert "403" in out2 and "query_sources" in out2
+
+
+async def test_web_search_tool_swallows_failures_but_propagates_quota(monkeypatch):
+    agent = make_agent()
+
+    async def fail_search(query):
+        raise ServerException(codes.IR_UPSTREAM_FAILED, "检索上游失败 (HTTP 500)")
+
+    monkeypatch.setattr(agent, "search_web", fail_search)
+    out = await agent.web_search_impl(None, "q")  # on_event 为 None 时内部跳过
+    assert out and "检索失败" in out[0]["title"]
+
+    async def quota(query):
+        raise ServerException(codes.IR_UPSTREAM_QUOTA, "余额不足")
+
+    monkeypatch.setattr(agent, "search_web", quota)
+    with pytest.raises(ServerException) as e:
+        await agent.web_search_impl(None, "q")
+    assert e.value.code == codes.IR_UPSTREAM_QUOTA

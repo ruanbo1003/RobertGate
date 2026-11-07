@@ -34,6 +34,40 @@ from app.infrastructure.ir_parsers import parse_url
 logger = logging.getLogger(__name__)
 
 _QUOTA_STATUS = {401, 402}
+_NONSTANDARD_FIELDS = ("service_tier",)  # OpenRouter 扩展值会撞 openai SDK 字面量校验
+
+
+class _SanitizeTransport(httpx.AsyncBaseTransport):
+    """剥除 chat/completions 响应中 openai SDK 不认的非标字段（如 service_tier=provisioned）。"""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport) -> None:
+        self._inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        response = await self._inner.handle_async_request(request)
+        if "chat/completions" not in str(request.url):
+            return response
+        if "application/json" not in response.headers.get("content-type", ""):
+            return response
+        body = await response.aread()
+        try:
+            data = _json.loads(body)
+        except ValueError:
+            return httpx.Response(
+                response.status_code, headers=response.headers, content=body,
+                request=request,
+            )
+        for field in _NONSTANDARD_FIELDS:
+            data.pop(field, None)
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        headers.pop("content-encoding", None)
+        return httpx.Response(
+            response.status_code, headers=headers,
+            content=_json.dumps(data).encode(), request=request,
+        )
 _READ_URL_LIMIT = 8_000
 _SNIPPET_RADIUS = 300
 
@@ -82,12 +116,23 @@ class PydanticIrAgent:
         model: str,
         search_model: str,
         search_transport: httpx.AsyncBaseTransport | None = None,
+        llm_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._api_key = api_key
         self._base = base_url.rstrip("/")
         self._search_model = search_model
         self._search_transport = search_transport
-        provider = OpenAIProvider(base_url=self._base, api_key=api_key)
+        # 显式 transport 会绕过 httpx 的 trust_env 代理解析——必须手动继承环境代理，
+        # 否则直连出口可能触发 OpenRouter 地区限制（见 Task 10 冒烟记录）
+        import os
+
+        proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        inner = llm_transport or httpx.AsyncHTTPTransport(proxy=proxy)
+        http_client = httpx.AsyncClient(
+            timeout=300.0,
+            transport=_SanitizeTransport(inner),
+        )
+        provider = OpenAIProvider(base_url=self._base, api_key=api_key, http_client=http_client)
         self._model = OpenAIChatModel(model, provider=provider)
 
         self.research_agent: Agent[ResearchDeps, ChapterDraft] = Agent(
@@ -112,24 +157,50 @@ class PydanticIrAgent:
         @self.research_agent.tool
         async def web_search(ctx: RunContext[ResearchDeps], query: str) -> list[dict]:
             """Search the public web. Returns a list of {title, url, snippet}."""
-            ctx.deps.on_event("search", f"检索「{query}」", None)
-            results = await ctx.deps.agent.search_web(query)
-            for r in results[:3]:
-                ctx.deps.on_event("read_url", f"命中：{r['title']}", r["url"])
-            return results
+            return await ctx.deps.agent.web_search_impl(ctx.deps.on_event, query)
 
         @self.research_agent.tool
         async def read_url(ctx: RunContext[ResearchDeps], url: str) -> str:
-            """Fetch and read a web page's text content (truncated)."""
+            """Fetch and read one http(s) web page's text (truncated). Only for URLs
+            returned by web_search — uploaded materials must use query_sources."""
             ctx.deps.on_event("read_url", f"读取网页：{url[:80]}", url)
-            text = await parse_url(url)
-            return text[:_READ_URL_LIMIT]
+            return await ctx.deps.agent.read_url_impl(url)
 
         @self.research_agent.tool
         async def query_sources(ctx: RunContext[ResearchDeps], keyword: str) -> list[dict]:
             """Search the uploaded project materials. Returns {source_id, source, snippet}."""
             ctx.deps.on_event("read_source", f"查资料「{keyword}」", None)
             return ctx.deps.agent.query_sources_impl(ctx.deps.ctx, keyword)
+
+    async def web_search_impl(self, on_event, query: str) -> list[dict]:
+        """检索失败返回错误条目（模型可换关键词重试）；仅配额错误穿透以暂停队列。"""
+        if on_event is not None:
+            on_event("search", f"检索「{query}」", None)
+        try:
+            results = await self.search_web(query)
+        except ServerException as e:
+            if e.code == codes.IR_UPSTREAM_QUOTA:
+                raise
+            logger.warning("web_search 失败：%s", e.message)
+            return [{"title": "检索失败", "url": "", "snippet": f"{e.message}；请换关键词或改用 query_sources"}]
+        if on_event is not None:
+            for r in results[:3]:
+                if r.get("url"):
+                    on_event("read_url", f"命中：{r['title']}", r["url"])
+        return results
+
+    async def read_url_impl(self, url: str) -> str:
+        """抓取失败返回错误文本（不抛异常——工具层失败不应终结整章研究）。"""
+        if not url.startswith(("http://", "https://")):
+            return (
+                f"（抓取失败：{url} 不是 http(s) 网址。上传资料请用 query_sources 工具，"
+                "网页只接受 web_search 返回的 URL）"
+            )
+        try:
+            text = await parse_url(url)
+        except Exception as e:  # noqa: BLE001
+            return f"（抓取失败：{e}。请换其他来源，或改用 query_sources 查上传资料）"
+        return text[:_READ_URL_LIMIT]
 
     def query_sources_impl(self, ctx: ResearchContext, keyword: str) -> list[dict]:
         hits: list[dict] = []
