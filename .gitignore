@@ -46,3 +46,6 @@ output/
 
 # ai-videos 运行期产物（生成的图/视频/音频/成片）
 backend/data/ai-videos/
+
+# invest-reports 运行期产物（上传文件/解析缓存/成稿）
+backend/data/invest-reports/
