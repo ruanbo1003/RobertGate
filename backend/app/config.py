@@ -46,8 +46,8 @@ class Settings(BaseSettings):
 
     # invest-reports（投资报告 Agent，走 OPENROUTER_API_KEY）
     IR_DATA_DIR: str = "data/invest-reports"
-    IR_LLM_MODEL: str = "anthropic/claude-haiku-4.5"
-    IR_SEARCH_MODEL: str = "anthropic/claude-haiku-4.5:online"
+    IR_LLM_MODEL: str = "deepseek/deepseek-v3.2"
+    IR_SEARCH_MODEL: str = "deepseek/deepseek-v3.2:online"
     # macOS Homebrew 瘦身版 ffmpeg 无 subtitles 滤镜（libass），烧字幕需指向
     # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
     AV_FFMPEG_BIN: str = "ffmpeg"
