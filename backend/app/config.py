@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     AV_IMAGE_SIZE: str = "720x1280"
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    # kie.ai（对白镜音视同出渠道，功能见 docs/superpowers/specs/2026-11-09-av-dialogue-shots-design.md）
+    KIE_API_KEY: str = ""
     # macOS Homebrew 瘦身版 ffmpeg 无 subtitles 滤镜（libass），烧字幕需指向
     # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
     AV_FFMPEG_BIN: str = "ffmpeg"
