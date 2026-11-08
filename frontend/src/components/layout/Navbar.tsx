@@ -6,7 +6,7 @@ import { useAuth } from '../../store/AuthContext'
 import UserMenu from './UserMenu'
 
 const navLinks = [
-  { to: '/invest-reports', label: '投资报告', icon: FileText },
+  { to: '/invest-reports', label: 'Invest Reports', icon: FileText },
   { to: '/ai-videos', label: 'AI Videos', icon: Clapperboard },
   { to: '/ai-tools', label: 'Tools', icon: Cpu },
   { to: '/bookmarks', label: 'Bookmarks', icon: Bookmark },
@@ -35,13 +35,12 @@ export default function Navbar() {
 
         {/* Desktop nav links */}
         <div className="hidden md:flex items-center gap-1">
-          {navLinks.map(({ to, label, icon: Icon }) => (
+          {navLinks.map(({ to, label }) => (
             <Link
               key={to}
               to={to}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-text-secondary hover:text-primary rounded-[var(--radius-sm)] hover:bg-primary-light/50 transition-colors"
+              className="px-3 py-2 text-sm font-medium text-text-secondary hover:text-primary rounded-[var(--radius-sm)] hover:bg-primary-light/50 transition-colors"
             >
-              <Icon size={15} />
               {label}
             </Link>
           ))}
