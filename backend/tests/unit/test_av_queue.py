@@ -61,8 +61,9 @@ def make_store():
     for i in range(1, 7):
         s = AvShot.create(
             project_id=1, order_index=i,
-            speaker_character_id=10, ref_character_ids=[10],
-            line_en=f"Line {i}!", line_zh="", image_prompt=f"prompt {i}",
+            ref_character_ids=[10],
+            dialogue=[{"character_id": 10, "en": f"Line {i}!", "zh": ""}],
+            image_prompt=f"prompt {i}",
             models=DEFAULT_MODELS, tts_voice="alex",
         )
         s.id = i
@@ -275,6 +276,8 @@ async def test_video_fails_when_image_failed(queue, store, client):
 
 
 async def test_audio_success_records_duration_and_voice(queue, store, client):
+    # 旧链路桥接：TTS 只剩未迁移旧镜在用，文本仍读 line_en（T6 起对白镜禁走 audio）
+    store["shots"][2].line_en = "Line 2!"
     queue.enqueue(1, 2, AssetKind.AUDIO, "tts-m", voice="bella")
     await drain(queue)
     shot = store["shots"][2]

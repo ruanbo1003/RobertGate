@@ -49,10 +49,8 @@ def _shot(id_: int = 1, order: int = 1, project_id: int = 1) -> AvShot:
     s = AvShot.create(
         project_id=project_id,
         order_index=order,
-        speaker_character_id=1,
         ref_character_ids=[1],
-        line_en=f"Line {order}!",
-        line_zh="",
+        dialogue=[{"character_id": 1, "en": f"Line {order}!", "zh": ""}],
         image_prompt=f"prompt {order}",
         models=DEFAULT_MODELS,
         tts_voice="alex",
@@ -312,18 +310,19 @@ async def test_compose_rejects_missing_assets(project_service, uow):
     with pytest.raises(ParamException) as e:
         await project_service.compose(1, ignore_stale=False)
     assert e.value.code == codes.AV_PRECONDITION_FAILED
-    assert len(e.value.data["missing"]) == 2
+    # audio 产物不再参与合成预检，只缺 video
+    assert [m["kind"] for m in e.value.data["missing"]] == ["video"]
 
 
 async def test_compose_requires_stale_confirm(project_service, uow):
     shot = _ready_shot(1, 1)
-    shot.apply_patch(line_en="changed")  # audio stale
+    shot.apply_patch(dialogue=[{"character_id": 1, "en": "changed", "zh": ""}])  # video stale
     uow.av_projects.find_by_id = AsyncMock(return_value=_project())
     uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
     with pytest.raises(ParamException) as e:
         await project_service.compose(1, ignore_stale=False)
     assert e.value.code == codes.AV_STALE_CONFIRM_REQUIRED
-    assert e.value.data["stale_items"][0]["kind"] == "audio"
+    assert e.value.data["stale_items"][0]["kind"] == "video"
 
 
 async def test_compose_spawns_background_task_after_commit(
