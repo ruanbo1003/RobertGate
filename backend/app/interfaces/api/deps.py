@@ -98,7 +98,8 @@ def get_av_composer() -> FfmpegComposer:
 
 @lru_cache
 def get_whisper_aligner() -> WhisperAligner:
-    return WhisperAligner(model_size=get_settings().AV_WHISPER_MODEL)
+    s = get_settings()
+    return WhisperAligner(model_size=s.AV_WHISPER_MODEL, ffmpeg_bin=s.AV_FFMPEG_BIN)
 
 
 # ---------- 工作单元 ----------
