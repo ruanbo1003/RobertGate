@@ -155,6 +155,18 @@
               }
             ],
             "title": "Personality"
+          },
+          "voice_desc": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Desc"
           }
         },
         "required": [
@@ -288,6 +300,35 @@
           "prompt"
         ],
         "title": "CreateTemplateRequest",
+        "type": "object"
+      },
+      "DialogueLineIn": {
+        "properties": {
+          "character_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Character Id"
+          },
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "zh": {
+            "default": "",
+            "title": "Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "en"
+        ],
+        "title": "DialogueLineIn",
         "type": "object"
       },
       "GenerateAllRequest": {
@@ -683,6 +724,18 @@
               }
             ],
             "title": "Personality"
+          },
+          "voice_desc": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Desc"
           }
         },
         "title": "UpdateCharacterRequest",
@@ -758,18 +811,20 @@
       },
       "UpdateShotRequest": {
         "properties": {
-          "duration_estimate": {
+          "dialogue": {
             "anyOf": [
               {
-                "maximum": 30.0,
-                "minimum": 1.0,
-                "type": "number"
+                "items": {
+                  "$ref": "#/components/schemas/DialogueLineIn"
+                },
+                "maxItems": 4,
+                "type": "array"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Duration Estimate"
+            "title": "Dialogue"
           },
           "image_prompt": {
             "anyOf": [
@@ -781,28 +836,6 @@
               }
             ],
             "title": "Image Prompt"
-          },
-          "line_en": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Line En"
-          },
-          "line_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Line Zh"
           },
           "ref_character_ids": {
             "anyOf": [
@@ -817,17 +850,6 @@
               }
             ],
             "title": "Ref Character Ids"
-          },
-          "speaker_character_id": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Speaker Character Id"
           },
           "video_prompt": {
             "anyOf": [
@@ -1813,7 +1835,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "pattern": "^(llm|t2i|i2v|tts)$",
+                  "pattern": "^(llm|t2i|i2v|tts|dialogue_video)$",
                   "type": "string"
                 },
                 {

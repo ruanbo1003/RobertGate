@@ -106,9 +106,13 @@ class AvCharacterService:
         return {"characters": out}
 
     async def create_character(
-        self, name: str, appearance_prompt: str, personality: str | None
+        self,
+        name: str,
+        appearance_prompt: str,
+        personality: str | None,
+        voice_desc: str | None = None,
     ) -> dict:
-        char = AvCharacter.create(name, appearance_prompt, personality)
+        char = AvCharacter.create(name, appearance_prompt, personality, voice_desc)
         if await self._uow.av_characters.find_by_name(char.name) is not None:
             raise ParamException(codes.AV_PARAM_INVALID, "角色名称已存在")
         self._uow.av_characters.add(char)
@@ -123,6 +127,7 @@ class AvCharacterService:
         appearance_prompt: str | None,
         personality: str | None,
         cover_image_id: int | None,
+        voice_desc: str | None = None,
     ) -> dict:
         char = ensure_found(
             await self._uow.av_characters.find_by_id(character_id),
@@ -132,7 +137,7 @@ class AvCharacterService:
         if name is not None and name.strip() != char.name:
             if await self._uow.av_characters.find_by_name(name.strip()) is not None:
                 raise ParamException(codes.AV_PARAM_INVALID, "角色名称已存在")
-        char.apply_update(name, appearance_prompt, personality)
+        char.apply_update(name, appearance_prompt, personality, voice_desc)
         if cover_image_id is not None:
             image = await self._uow.av_character_images.find_by_id(cover_image_id)
             if image is None or image.character_id != char.id:

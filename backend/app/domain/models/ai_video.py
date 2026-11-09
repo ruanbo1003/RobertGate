@@ -85,13 +85,19 @@ class AvCharacter(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
     @classmethod
-    def create(cls, name: str, appearance_prompt: str, personality: str | None) -> AvCharacter:
+    def create(
+        cls,
+        name: str,
+        appearance_prompt: str,
+        personality: str | None,
+        voice_desc: str | None = None,
+    ) -> AvCharacter:
         now = _now()
         return cls(
             name=_require_text(name, "角色名称", NAME_MAX),
             appearance_prompt=_require_text(appearance_prompt, "外形描述", PROMPT_MAX),
             personality=((personality or "").strip() or None),
-            voice_desc="",
+            voice_desc=(voice_desc or "").strip(),
             cover_image_id=None,
             created_at=now,
             updated_at=now,

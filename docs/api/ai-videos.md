@@ -33,7 +33,7 @@
 
 | 名称 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `type` | string | 全部 | `llm` / `t2i` / `i2v` / `tts`，省略返回全部分组 |
+| `type` | string | 全部 | `llm` / `t2i` / `i2v` / `tts` / `dialogue_video`，省略返回全部分组 |
 
 #### 响应
 
@@ -46,14 +46,20 @@
       "t2i":  [ { "id": "google/gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "default": true, "reference": "multi" } ],
       "i2v":  [ { "id": "bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
-                  "voices": ["alex", "anna", "benjamin", "bella"] } ]
+                  "voices": ["alex", "anna", "benjamin", "bella"] } ],
+      "dialogue_video": [
+        { "id": "kie:gemini-omni-video", "name": "Gemini Omni (kie.ai)", "default": true },
+        { "id": "openrouter:bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast（兜底）" }
+      ]
     }
   },
   "message": "ok"
 }
 ```
 
-模型全部来自 OpenRouter。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
+`llm`/`t2i`/`i2v`/`tts` 来自 OpenRouter 单一 provider。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
+
+`dialogue_video` 是**唯一跨渠道段，仅展示用，不可选择**：对白镜固定路由 kie.ai 主（`kie:gemini-omni-video`）+ OpenRouter 兜底（`openrouter:bytedance/seedance-2.0-fast`），`id` 即分镜 `video_model` 落库的实际渠道:模型 tag（见 5.2）。
 
 ---
 
@@ -77,6 +83,7 @@
         "name": "Momo",
         "appearance_prompt": "A cute cartoon fox child, orange fur, big curious eyes, green overalls",
         "personality": "好奇心旺盛，喜欢提问",
+        "voice_desc": "清脆活泼的小男孩声",
         "cover_image_url": "/api/v1/ai-videos/files/characters/1/cover.png",
         "candidate_images": [
           { "id": 11, "url": "/api/v1/ai-videos/files/characters/1/11.png" }
@@ -98,7 +105,7 @@
 #### 请求
 
 ```json
-{ "name": "Momo", "appearance_prompt": "...", "personality": "..." }
+{ "name": "Momo", "appearance_prompt": "...", "personality": "...", "voice_desc": "清脆活泼的小男孩声" }
 ```
 
 | 字段 | 必填 | 约束 |
@@ -106,6 +113,7 @@
 | `name` | 是 | 1-50 字符，唯一 |
 | `appearance_prompt` | 是 | 1-1000 字符 |
 | `personality` | 否 | ≤500 字符 |
+| `voice_desc` | 否 | ≤200 字符，音色气质的文字描述（对白镜 prompt 用，见 5.2），缺省为空串 |
 
 #### 响应
 
@@ -250,16 +258,17 @@
         {
           "id": 31,
           "order": 1,
-          "duration_estimate": 5.0,
-          "speaker_character_id": 1,
-          "ref_character_ids": [1],
-          "video_prompt": "the fox waves happily, slow push-in, sunny mood",
-          "line_en": "Look, Kuku! A supermarket!",
-          "line_zh": "看，Kuku！一家超市！",
-          "image_prompt": "Momo the fox pointing at a small supermarket...",
+          "duration_estimate": 6.0,
+          "ref_character_ids": [1, 3],
+          "video_prompt": "",
+          "image_prompt": "Momo and Kuku standing at a small supermarket entrance...",
+          "dialogue": [
+            { "character_id": 1, "en": "Look, Kuku! A supermarket!", "zh": "看，Kuku！一家超市！" },
+            { "character_id": 3, "en": "Let's buy some apples!", "zh": "我们去买些苹果吧！" }
+          ],
           "image":  { "state": "success", "url": "/api/v1/ai-videos/files/projects/3/shots/31/image.png", "model": "google/gemini-3.1-flash-image", "stale": false, "error": null },
-          "video":  { "state": "running", "url": null, "model": "bytedance/seedance-2.0-fast", "stale": false, "error": null },
-          "audio":  { "state": "pending", "url": null, "model": "openai/gpt-audio", "voice": "alloy", "duration": null, "stale": false, "error": null }
+          "video":  { "state": "running", "url": null, "model": "kie:gemini-omni-video", "stale": false, "error": null },
+          "audio": null
         }
       ]
     }
@@ -338,12 +347,11 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 
 **PUT** `/api/v1/ai-videos/projects/{id}/shots/{shot_id}`
 
-可改字段：`line_en`、`line_zh`、`speaker_character_id`、`ref_character_ids`（必须是项目已选角色的子集）、`image_prompt`、`video_prompt`、`duration_estimate`。
+可改字段：`dialogue`（台词列表，最多 4 句，每句 `{character_id, en, zh}`，改动后服务端按台词长度重估 `duration_estimate`）、`ref_character_ids`（必须是项目已选角色的子集）、`image_prompt`、`video_prompt`。
 
 **过期链规则（服务端执行）**：
 - 改 `image_prompt` 或 `ref_character_ids` → 该镜 `image`、`video` 置 `stale=true`
-- 改 `video_prompt` → 该镜 `video` 置 `stale=true`
-- 改 `line_en` 或 `speaker_character_id` → 该镜 `audio` 置 `stale=true`（字幕随台词走）
+- 改 `video_prompt` 或 `dialogue` → 该镜 `video` 置 `stale=true`（对白镜口型/语音随台词一起重生成，没有独立 `audio` 产物）
 - 产物重新生成成功后 `stale` 复位，合成产物置 `compose.stale=true`
 
 响应返回更新后的完整镜对象。生成中的任务不受编辑影响，按旧参数跑完后立即标 `stale`。
@@ -390,6 +398,8 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 
 该镜 `image.state != success` → `2003, "请先生成分镜图"`。以分镜图为首帧。
 
+`dialogue` 非空的对白镜：忽略请求体 `model`，固定走对白镜路由（kie.ai 主 + OpenRouter 兜底，见一.1 `dialogue_video`）——按台词与出场角色的 `voice_desc` 拼 prompt，一次生成带口型、带语音的视频（音视同出），主渠道失败自动降级到兜底。成功后 `video.model` 回填**实际生效**的渠道:模型（如 `kie:gemini-omni-video` 或降级后的 `openrouter:bytedance/seedance-2.0-fast`），供前端只读展示。`dialogue` 为空的纯画面镜走原 i2v 流程不变。
+
 ### 5.3 生成配音
 
 **POST** `/api/v1/ai-videos/projects/{id}/shots/{shot_id}/audio`
@@ -398,7 +408,7 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 { "model": "openai/gpt-audio", "voice": "alloy" }
 ```
 
-对 `line_en` 做 TTS，成功后回填 `audio.duration`（秒，用于合成对齐）。
+对白镜（`dialogue` 非空）无独立配音——语音已随 5.2 的视频一起生成 → `2001, "对白镜无独立配音"`。仅纯画面镜（`dialogue` 为空）可用，对旧字段 `line_en` 做 TTS，成功后回填 `audio.duration`（秒，用于合成对齐）。
 
 ### 5.4 批量生成
 
@@ -413,7 +423,7 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 | `types` | 要生成的产物类型，子集 |
 | `scope` | `missing`：只排 `pending`/`failed`/`stale` 的；`all`：全部重做 |
 
-按镜序入队；`video` 自动等待同镜 `image` 成功后才派发，`image` 失败则该镜 `video` 标记 `failed`（error="前置分镜图失败"）。响应返回 `data.enqueued`（各类型入队数）。
+按镜序入队；`video` 自动等待同镜 `image` 成功后才派发，`image` 失败则该镜 `video` 标记 `failed`（error="前置分镜图失败"）。对白镜不排 `audio`（静默跳过，不报错）。响应返回 `data.enqueued`（各类型入队数）。
 
 ### 5.5 取消队列
 
@@ -430,10 +440,10 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 ```
 
 前置校验：
-- 任一镜 `video` 或 `audio` 非 `success` → `2003`，`data.missing` 列出缺失清单
+- 任一镜 `video` 非 `success` → `2003`，`data.missing` 列出缺失清单（`audio` 不参与：对白镜没有独立音频，纯画面镜若未配音也不阻塞合成——留空白音轨）
 - 存在 `stale=true` 产物且 `ignore_stale` 非 true → `2004`，`data.stale_items` 列出过期清单（前端据此弹确认框）
 
-合成规则：每镜时长 = max(视频时长, 音频时长)，视频不足末帧定格；字幕烧录 `line_en`（底部整句）。产出 `projects/{id}/final.mp4`。
+合成规则：镜有独立音频文件（纯画面镜走旧 TTS）→ 与视频混流，时长 = max(视频时长, 音频时长)，视频不足末帧定格；镜无独立音频（对白镜）→ 直接用视频自带音轨，时长 = 视频实际时长。字幕：对白镜用本地 whisper 转写词级时间戳，与已知台词逐句对齐烧录（对齐失败回退按台词长度均分镜时长，字幕不缺条目）；纯画面镜仍烧录整句旧 `line_en`。产出 `projects/{id}/final.mp4`。
 
 ### 5.7 下载成片
 
@@ -464,14 +474,14 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
       { "id": 31,
         "image": { "state": "success", "stale": false, "url": "...", "version": 3 },
         "video": { "state": "running", "stale": false, "url": null, "version": 1 },
-        "audio": { "state": "pending", "stale": false, "url": null, "version": 0 } }
+        "audio": null }
     ]
   },
   "message": "ok"
 }
 ```
 
-`version` 每次生成成功 +1，前端用于刷新缓存图片（URL 加 `?v=`）。`paused=true` 时 `paused_reason` 给出全局错误文案（顶部横幅展示）。
+`version` 每次生成成功 +1，前端用于刷新缓存图片（URL 加 `?v=`）。`paused=true` 时 `paused_reason` 给出全局错误文案（顶部横幅展示）。对白镜（`dialogue` 非空）的 `audio` 恒为 `null`（不适用，非待生成）；纯画面镜仍返回完整 `audio` 块。
 
 ### 6.2 产物文件
 

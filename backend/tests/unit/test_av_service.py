@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.application.dto.ai_video import CharacterOut, ShotOut
 from app.application.services.av_service import AvCharacterService, AvProjectService
 from app.domain.errors import ParamException, codes
 from app.domain.models.ai_video import (
@@ -161,6 +162,36 @@ def project_service(uow, client, queue, storage, composer, runner):
         runner=runner,
         uow_factory=uow_factory,
     )
+
+
+# ---------------- API 契约（DTO） ----------------
+
+
+class TestShotOutContract:
+    def test_dialogue_shot_has_no_audio_block_and_correct_dialogue_length(self):
+        shot = _shot()  # dialogue 非空（_shot 默认单句）
+        out = ShotOut.build(shot)
+        assert out.audio is None
+        assert len(out.dialogue) == 1
+        assert out.dialogue[0].en == "Line 1!"
+
+    def test_plain_shot_without_dialogue_has_audio_block(self):
+        shot = AvShot.create(
+            project_id=1, order_index=1, ref_character_ids=[],
+            dialogue=[], image_prompt="p", models=DEFAULT_MODELS, tts_voice="alex",
+        )
+        out = ShotOut.build(shot)
+        assert out.audio is not None
+        assert out.dialogue == []
+
+
+class TestCharacterOutContract:
+    def test_voice_desc_surfaces_in_character_out(self):
+        char = _character()
+        char.apply_update(name=None, appearance_prompt=None, personality=None,
+                           voice_desc="warm friendly")
+        out = CharacterOut.build(char, [], used_count=0)
+        assert out.voice_desc == "warm friendly"
 
 
 # ---------------- 角色 ----------------

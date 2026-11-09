@@ -72,6 +72,17 @@ class TestCharacterValidation:
         with pytest.raises(ParamException):
             AvCharacter.create(name="Momo", appearance_prompt="x" * 1001, personality=None)
 
+    def test_create_defaults_voice_desc_empty(self):
+        c = AvCharacter.create(name="Momo", appearance_prompt="a fox", personality=None)
+        assert c.voice_desc == ""
+
+    def test_create_accepts_voice_desc(self):
+        c = AvCharacter.create(
+            name="Momo", appearance_prompt="a fox", personality=None,
+            voice_desc=" warm friendly ",
+        )
+        assert c.voice_desc == "warm friendly"
+
 
 class TestProjectValidation:
     def test_create_defaults(self):
