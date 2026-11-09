@@ -6,6 +6,8 @@ export type AssetKind = 'image' | 'video' | 'audio'
 export type ProjectStatus = 'draft' | 'generating' | 'partial_failed' | 'completed'
 export type ComposeState = 'none' | 'running' | 'success' | 'failed'
 export type ModelType = 'llm' | 't2i' | 'i2v' | 'tts'
+/** dialogue_video：对白镜专用，仅展示（固定路由 kie 主 + OpenRouter 兜底，不可选择） */
+export type ModelSegment = ModelType | 'dialogue_video'
 
 export interface ModelInfo {
   id: string
@@ -16,7 +18,7 @@ export interface ModelInfo {
   voices?: string[]
 }
 
-export type ModelsMap = Record<ModelType, ModelInfo[]>
+export type ModelsMap = Record<ModelSegment, ModelInfo[]>
 
 export interface CandidateImage {
   id: number
@@ -28,6 +30,8 @@ export interface Character {
   name: string
   appearance_prompt: string
   personality: string | null
+  /** 音色气质描述（对白镜 prompt 用），如"清脆活泼的小男孩声"；空串 = 未设置 */
+  voice_desc: string
   cover_image_url: string | null
   candidate_images: CandidateImage[]
   used_count: number
@@ -39,6 +43,7 @@ export interface CharacterPayload {
   name: string
   appearance_prompt: string
   personality?: string
+  voice_desc?: string
   cover_image_id?: number
 }
 
@@ -83,29 +88,33 @@ export interface ShotAudioAsset extends ShotAsset {
   duration: number | null
 }
 
+export interface DialogueLine {
+  /** 说话角色 id；null = 旁白（画面无具体说话人） */
+  character_id: number | null
+  en: string
+  zh: string
+}
+
 export interface Shot {
   id: number
   order: number
   duration_estimate: number
-  speaker_character_id: number | null
   ref_character_ids: number[]
-  line_en: string
-  line_zh: string
   image_prompt: string
   video_prompt: string
+  /** 台词列表（最多 4 句）；非空 = 对白镜（音视同出），空 = 纯画面镜 */
+  dialogue: DialogueLine[]
   image: ShotAsset
   video: ShotAsset
-  audio: ShotAudioAsset
+  /** 对白镜没有独立配音产物 */
+  audio: ShotAudioAsset | null
 }
 
 export interface ShotPatch {
-  line_en?: string
-  line_zh?: string
-  speaker_character_id?: number | null
+  dialogue?: DialogueLine[]
   ref_character_ids?: number[]
   image_prompt?: string
   video_prompt?: string
-  duration_estimate?: number
 }
 
 export interface DefaultModels {
@@ -184,7 +193,7 @@ export interface ShotStatus {
   id: number
   image: AssetStatusLite
   video: AssetStatusLite
-  audio: AssetStatusLite & { duration: number | null }
+  audio: (AssetStatusLite & { duration: number | null }) | null
 }
 
 export interface QueueStatus {

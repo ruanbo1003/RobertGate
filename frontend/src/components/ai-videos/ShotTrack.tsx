@@ -63,7 +63,9 @@ export default function ShotTrack({ shots, selectedId, onSelect, onAdd, onMove }
                     {shot.duration_estimate.toFixed(1)}s
                   </span>
                 </div>
-                <p className="text-[11px] text-text-muted truncate">{shot.line_en || '（空台词）'}</p>
+                <p className="text-[11px] text-text-muted truncate">
+                  {shot.dialogue.map((ln) => ln.en).join(' / ') || '（空台词）'}
+                </p>
                 <div className="flex items-center gap-2.5">
                   <span className="flex items-center gap-1" title="分镜图">
                     <ImageIcon size={11} className="text-text-muted" />
@@ -73,10 +75,17 @@ export default function ShotTrack({ shots, selectedId, onSelect, onAdd, onMove }
                     <Clapperboard size={11} className="text-text-muted" />
                     <StatusDot state={shot.video.state} stale={shot.video.stale} />
                   </span>
-                  <span className="flex items-center gap-1" title="配音">
-                    <Volume2 size={11} className="text-text-muted" />
-                    <StatusDot state={shot.audio.state} stale={shot.audio.stale} />
-                  </span>
+                  {shot.audio && (
+                    <span className="flex items-center gap-1" title="配音">
+                      <Volume2 size={11} className="text-text-muted" />
+                      <StatusDot state={shot.audio.state} stale={shot.audio.stale} />
+                    </span>
+                  )}
+                  {shot.dialogue.length >= 2 && (
+                    <span className="ml-auto px-1.5 py-0.5 bg-primary-light/60 rounded-full text-[10px] font-semibold text-primary">
+                      {shot.dialogue.length}人
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="absolute right-1.5 top-1.5 flex-col gap-0.5 hidden group-hover:flex">

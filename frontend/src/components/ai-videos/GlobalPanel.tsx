@@ -58,9 +58,9 @@ export default function GlobalPanel({
                 alt={`镜 ${shot.order} 预览`}
                 className="w-full h-full object-cover"
               />
-              {shot.line_en && (
+              {shot.dialogue.length > 0 && (
                 <span className="absolute bottom-4 left-3 right-3 px-2.5 py-1.5 bg-text-primary/70 rounded-[var(--radius-sm)] text-center text-[11px] font-bold text-white">
-                  {shot.line_en}
+                  {shot.dialogue.map((ln) => ln.en).join(' / ')}
                 </span>
               )}
             </>
