@@ -299,6 +299,16 @@ def estimate_dialogue_duration(dialogue: list[dict]) -> float:
     return round(min(DIALOGUE_SECONDS_MAX, max(3.0, _raw_dialogue_seconds(dialogue))), 1)
 
 
+def legacy_shot_to_dialogue(
+    speaker_character_id: int | None, line_en: str, line_zh: str
+) -> list[dict]:
+    """0010 迁移回填用：旧单台词三字段 -> dialogue 单元素列表（line_en 空则 []）。"""
+    line_en = (line_en or "").strip()
+    if not line_en:
+        return []
+    return [{"character_id": speaker_character_id, "en": line_en, "zh": (line_zh or "").strip()}]
+
+
 class AvShot(Base):
     __tablename__ = "av_shots"
 

@@ -16,6 +16,7 @@ from app.domain.models.ai_video import (
     estimate_dialogue_duration,
     estimate_duration,
     group_script_into_shots,
+    legacy_shot_to_dialogue,
     missing_compose_items,
     shots_from_script,
     stale_items,
@@ -529,3 +530,14 @@ class TestAudioRetired:
         s.mark_succeeded(AssetKind.IMAGE, path="p/i")
         missing = missing_compose_items([s])
         assert missing == [{"shot_id": s.id, "shot_order": 1, "kind": "video"}]
+
+
+class TestLegacyBackfill:
+    def test_legacy_shot_to_dialogue_builds_single_line(self):
+        assert legacy_shot_to_dialogue(3, "Hello", "你好") == [
+            {"character_id": 3, "en": "Hello", "zh": "你好"}
+        ]
+
+    def test_legacy_shot_to_dialogue_empty_line_is_empty_list(self):
+        assert legacy_shot_to_dialogue(None, "", "") == []
+        assert legacy_shot_to_dialogue(None, "   ", "") == []
