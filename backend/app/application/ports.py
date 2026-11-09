@@ -118,14 +118,28 @@ class AvGenClient(Protocol):
 
 @dataclass(frozen=True)
 class ComposeItem:
-    """合成输入：单镜的视频/音频绝对路径与台词（字幕用）。"""
+    """合成输入：单镜的视频绝对路径 + 可选音频（None=用视频自带音轨）+ 字幕条目。
+
+    subtitles 为该镜内部相对时间 [(text, start, end), ...]（0 起点）；
+    全局字幕偏移由合成器按各镜时长累加。
+    """
 
     video: Path
-    audio: Path
-    line_en: str
+    audio: Path | None
+    subtitles: list[tuple[str, float, float]]
 
 
 class VideoComposer(Protocol):
     """成片合成器（ffmpeg 实现见 infrastructure/av_compose.py）。"""
 
     async def compose(self, items: list[ComposeItem], out_path: Path) -> None: ...
+
+    async def probe_duration(self, path: Path) -> float | None:
+        """探测媒体文件时长（秒）；探测失败返回 None。"""
+        ...
+
+
+class AudioWordAligner(Protocol):
+    """字幕用词级时间戳转写（faster-whisper 实现见 infrastructure/av_whisper.py）。"""
+
+    def transcribe_words(self, media: Path) -> list[tuple[str, float, float]]: ...

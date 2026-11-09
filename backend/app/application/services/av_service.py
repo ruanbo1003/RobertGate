@@ -24,8 +24,15 @@ from app.application.dto.ai_video import (
     ShotStatusOut,
     file_url,
 )
-from app.application.ports import AvGenClient, ComposeItem, TaskRunner, VideoComposer
+from app.application.ports import (
+    AudioWordAligner,
+    AvGenClient,
+    ComposeItem,
+    TaskRunner,
+    VideoComposer,
+)
 from app.application.services.av_queue import AvGenerationQueue, AvStorage
+from app.application.services.av_subtitle import align_dialogue
 from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.ai_video import (
     AssetKind,
@@ -203,6 +210,7 @@ class AvProjectService:
         uow_factory,
         model_defaults: dict[str, str] | None = None,
         voice_default: str = _FALLBACK_VOICE,
+        whisper: AudioWordAligner | None = None,
     ) -> None:
         self._uow = uow
         self._client = client
@@ -213,6 +221,7 @@ class AvProjectService:
         self._uow_factory = uow_factory
         self._model_defaults = model_defaults or dict(_FALLBACK_MODELS)
         self._voice_default = voice_default
+        self._whisper = whisper
 
     # ---------------- 内部取数 ----------------
 
@@ -571,22 +580,43 @@ class AvProjectService:
                 f"存在 {len(stale)} 项过期产物",
                 data={"stale_items": stale},
             )
-        items = [
-            ComposeItem(
-                video=self._storage.absolute(s.video_path or ""),
-                audio=self._storage.absolute(s.audio_path or ""),
-                line_en=s.line_en,
-            )
-            for s in sorted(shots, key=lambda x: x.order_index)
-        ]
+        ordered = sorted(shots, key=lambda x: x.order_index)
         project.mark_compose_running()
         await self._uow.commit()
-        self._runner.spawn(self._run_compose(project_id, items))
+        self._runner.spawn(self._run_compose(project_id, ordered))
 
-    async def _run_compose(self, project_id: int, items: list[ComposeItem]) -> None:
+    async def _build_compose_items(self, shots: list[AvShot]) -> list[ComposeItem]:
+        """组装合成输入：镜有独立音频文件 → mux；否则（对白镜）用视频自带音轨 +
+        whisper 词级对齐字幕。whisper 调用耗时，必须在后台协程里做（不占请求事务）。
+        """
+        items: list[ComposeItem] = []
+        for s in shots:
+            video = self._storage.absolute(s.video_path or "")
+            audio = self._storage.absolute(s.audio_path) if s.audio_path else None
+            video_dur = await self._composer.probe_duration(video) or s.duration_estimate
+            if audio is not None:
+                audio_dur = await self._composer.probe_duration(audio) or video_dur
+                duration = max(video_dur, audio_dur)
+            else:
+                duration = video_dur
+            if s.has_dialogue and audio is None:
+                lines = [
+                    (f"{ln['en']}\n{ln['zh']}" if ln["zh"] else ln["en"])
+                    for ln in s.dialogue
+                ]
+                words = self._whisper.transcribe_words(video) if self._whisper else []
+                subtitles = align_dialogue(lines, words, duration)
+            else:
+                text = s.line_en or (s.dialogue[0]["en"] if s.dialogue else "")
+                subtitles = [(text, 0.0, duration)]
+            items.append(ComposeItem(video=video, audio=audio, subtitles=subtitles))
+        return items
+
+    async def _run_compose(self, project_id: int, shots: list[AvShot]) -> None:
         rel_out = f"projects/{project_id}/final.mp4"
         error: str | None = None
         try:
+            items = await self._build_compose_items(shots)
             await self._composer.compose(items, self._storage.absolute(rel_out))
         except Exception as e:  # noqa: BLE001
             logger.exception("compose failed for project=%s", project_id)

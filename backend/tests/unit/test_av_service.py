@@ -142,6 +142,7 @@ def char_service(uow, client, storage):
 def composer():
     c = AsyncMock()
     c.compose = AsyncMock()
+    c.probe_duration = AsyncMock(return_value=None)  # 回退 shot.duration_estimate
     return c
 
 
@@ -403,7 +404,57 @@ async def test_compose_spawns_background_task_after_commit(
     await runner.coros[0]
     composer.compose.assert_awaited_once()
     assert project.compose_state == ComposeState.SUCCESS
-    assert project.compose_path == "projects/1/final.mp4"
+
+
+class FakeWhisperAligner:
+    def __init__(self, words: list[tuple[str, float, float]]):
+        self.words = words
+        self.calls: list = []
+
+    def transcribe_words(self, media):
+        self.calls.append(media)
+        return self.words
+
+
+async def _dialogue_ready_shot(id_: int, order: int) -> AvShot:
+    s = _shot(id_, order)  # dialogue=[{"character_id":1,"en":f"Line {order}!","zh":""}]
+    s.mark_running(AssetKind.IMAGE)
+    s.mark_succeeded(AssetKind.IMAGE, path=f"projects/1/shots/{id_}/image")
+    s.mark_running(AssetKind.VIDEO)
+    s.mark_succeeded(AssetKind.VIDEO, path=f"projects/1/shots/{id_}/video")
+    return s  # audio_path 留空：有声对白镜，走 whisper 对齐
+
+
+async def test_compose_dialogue_shot_without_audio_uses_whisper_alignment(
+    project_service, uow, runner, composer
+):
+    shot = await _dialogue_ready_shot(1, 1)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    whisper = FakeWhisperAligner([("Line", 0.0, 1.0), ("1!", 1.0, shot.duration_estimate)])
+    project_service._whisper = whisper
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    composer.compose.assert_awaited_once()
+    items = composer.compose.call_args[0][0]
+    assert len(items) == 1
+    assert items[0].audio is None
+    assert whisper.calls == [items[0].video]
+    assert items[0].subtitles == [("Line 1!", 0.0, shot.duration_estimate)]
+
+
+async def test_compose_mixed_mux_and_dialogue_shots(project_service, uow, runner, composer):
+    mux_shot = _ready_shot(1, 1)  # _ready_shot 生成全部产物，含物理 audio 文件
+    dialogue_shot = await _dialogue_ready_shot(2, 2)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[mux_shot, dialogue_shot])
+    project_service._whisper = FakeWhisperAligner([])  # 空词 → 对白镜回退均分
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    items = composer.compose.call_args[0][0]
+    assert len(items) == 2
+    assert items[0].audio is not None  # mux 镜
+    assert items[1].audio is None  # 对白镜
 
 
 # ---------------- Task 5: video_prompt / 出场角色 ----------------

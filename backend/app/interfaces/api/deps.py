@@ -31,6 +31,7 @@ from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.ai.image_fetch import fetch_image_bytes
 from app.infrastructure.av_compose import FfmpegComposer
 from app.infrastructure.av_storage import FsAvStorage
+from app.infrastructure.av_whisper import WhisperAligner
 from app.infrastructure.data.av_models import default_model, default_voice, reference_mode
 from app.infrastructure.legal.factory import get_legal_chat, get_legal_kb
 from app.infrastructure.data.english_data import ENGLISH_THEMES
@@ -93,6 +94,11 @@ def get_av_queue() -> AvGenerationQueue:
 def get_av_composer() -> FfmpegComposer:
     s = get_settings()
     return FfmpegComposer(ffmpeg_bin=s.AV_FFMPEG_BIN, ffprobe_bin=s.AV_FFPROBE_BIN)
+
+
+@lru_cache
+def get_whisper_aligner() -> WhisperAligner:
+    return WhisperAligner(model_size=get_settings().AV_WHISPER_MODEL)
 
 
 # ---------- 工作单元 ----------
@@ -203,4 +209,5 @@ async def get_av_project_service(
         uow_factory=new_uow,
         model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
         voice_default=default_voice(),
+        whisper=get_whisper_aligner(),
     )
