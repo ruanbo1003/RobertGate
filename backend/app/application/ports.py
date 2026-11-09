@@ -109,6 +109,12 @@ class AvGenClient(Protocol):
         """LLM JSON 输出（剧本生成 / 拆分镜）。"""
         ...
 
+    async def generate_dialogue_video(
+        self, image: bytes, prompt: str, duration_seconds: int
+    ) -> tuple[bytes, str]:
+        """对白镜（音视同出，多角色轮流说话+口型同步），返回 (mp4 bytes, 实际使用渠道:模型)。"""
+        ...
+
 
 @dataclass(frozen=True)
 class ComposeItem:

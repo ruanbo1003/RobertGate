@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     # kie.ai（对白镜音视同出渠道，功能见 docs/superpowers/specs/2026-11-09-av-dialogue-shots-design.md）
     KIE_API_KEY: str = ""
+    KIE_BASE_URL: str = "https://api.kie.ai/api/v1"
+    KIE_UPLOAD_BASE_URL: str = "https://kieai.redpandaai.co/api"
+    # 对白镜（音视同出）主模型 kie.ai / 兜底模型 OpenRouter
+    AV_DIALOGUE_MODEL: str = "gemini-omni-video"
+    AV_DIALOGUE_FALLBACK_MODEL: str = "bytedance/seedance-2.0-fast"
+    AV_WHISPER_MODEL: str = "small"
     # macOS Homebrew 瘦身版 ffmpeg 无 subtitles 滤镜（libass），烧字幕需指向
     # ffmpeg-full（如 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg）
     AV_FFMPEG_BIN: str = "ffmpeg"

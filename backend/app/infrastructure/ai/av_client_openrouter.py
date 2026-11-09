@@ -164,7 +164,12 @@ class OpenRouterAvClient:
     # ---------------- i2v ----------------
 
     async def generate_video(
-        self, image: bytes, prompt: str, model: str, duration_seconds: int = 5
+        self,
+        image: bytes,
+        prompt: str,
+        model: str,
+        duration_seconds: int = 5,
+        generate_audio: bool = False,
     ) -> bytes:
         payload = {
             "model": model,
@@ -180,6 +185,8 @@ class OpenRouterAvClient:
             "resolution": "720p",
             "duration": snap_duration(model, duration_seconds),
         }
+        if generate_audio:
+            payload["generate_audio"] = True
         submit = await self._request(
             "POST", f"{self._base}/videos", "图生视频提交", json=payload
         )

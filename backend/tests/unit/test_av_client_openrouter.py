@@ -138,6 +138,45 @@ async def test_generate_video_full_flow_and_duration_snap():
     assert frame["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+async def test_generate_video_generate_audio_flag_sets_payload():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/videos"):
+            captured.update(json.loads(request.content))
+            return httpx.Response(202, json={"id": "job1", "status": "pending"})
+        if path.endswith("/videos/job1") and "content" not in path:
+            return httpx.Response(200, json={"id": "job1", "status": "completed"})
+        if path.endswith("/videos/job1/content"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected {request.method} {path}")
+
+    await make_client(handler).generate_video(
+        b"frame", "two dogs talk", "bytedance/seedance-2.0-fast",
+        duration_seconds=8, generate_audio=True,
+    )
+    assert captured["generate_audio"] is True
+
+
+async def test_generate_video_without_generate_audio_omits_field():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/videos"):
+            captured.update(json.loads(request.content))
+            return httpx.Response(202, json={"id": "job1", "status": "pending"})
+        if path.endswith("/videos/job1") and "content" not in path:
+            return httpx.Response(200, json={"id": "job1", "status": "completed"})
+        if path.endswith("/videos/job1/content"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected {request.method} {path}")
+
+    await make_client(handler).generate_video(b"frame", "p", "m", duration_seconds=5)
+    assert "generate_audio" not in captured
+
+
 async def test_generate_video_failed_status_raises_with_reason():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
