@@ -124,6 +124,10 @@ class FakeClient:
     async def generate_json(self, system, user, model):
         return {}
 
+    async def generate_dialogue_video(self, image, prompt, duration_seconds):
+        data = await self._work("video_dialogue", prompt, duration_seconds)
+        return data, "kie:gemini-omni-video"
+
 
 class FakeStorage:
     def __init__(self):
@@ -261,7 +265,8 @@ async def test_video_waits_for_image_then_succeeds(queue, store, client):
     shot = store["shots"][1]
     assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
     kinds = [c[0] for c in client.calls]
-    assert kinds.index("image") < kinds.index("video")
+    # 默认分镜带 dialogue（make_store），video 走对白镜（音视同出）路径
+    assert kinds.index("image") < kinds.index("video_dialogue")
 
 
 async def test_video_fails_when_image_failed(queue, store, client):
@@ -341,6 +346,7 @@ async def test_counts_reports_project_queue(queue, store, client):
 
 async def test_video_uses_video_prompt_and_duration(queue, store, client, storage):
     shot = store["shots"][1]
+    shot.dialogue = []  # 纯画面镜：走旧 i2v 路径
     shot.video_prompt = "waves at camera, slow push-in"
     shot.mark_running(AssetKind.IMAGE)
     shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
@@ -354,6 +360,7 @@ async def test_video_uses_video_prompt_and_duration(queue, store, client, storag
 
 async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     shot = store["shots"][1]
+    shot.dialogue = []  # 纯画面镜：走旧 i2v 路径
     shot.mark_running(AssetKind.IMAGE)
     shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
     storage.saved["projects/1/shots/1/image.png"] = b"img"
@@ -361,6 +368,34 @@ async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     await drain(queue)
     call = next(c for c in client.calls if c[0] == "video")
     assert call[1] == "prompt 1"
+
+
+async def test_dialogue_shot_video_success_records_used_model_tag(queue, store, storage):
+    shot = store["shots"][1]  # dialogue 非空（make_store 默认）
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
+    assert shot.video_model == "kie:gemini-omni-video"
+
+
+async def test_dialogue_shot_video_prompt_includes_speaker_name_and_voice(
+    queue, store, client, storage
+):
+    shot = store["shots"][1]
+    shot.dialogue = [{"character_id": 10, "en": "Hello Lily!", "zh": ""}]
+    store["characters"][10].voice_desc = "warm friendly"
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    call = next(c for c in client.calls if c[0] == "video_dialogue")
+    prompt = call[1]
+    assert "Momo has a warm friendly voice" in prompt
+    assert 'Momo says: "Hello Lily!"' in prompt
 
 
 async def test_upstream_call_happens_outside_uow(store, client, storage):

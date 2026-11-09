@@ -253,6 +253,40 @@ async def test_split_shots_with_confirm_replaces_and_cancels_queue(
     uow.av_shots.delete_by_project.assert_awaited_once_with(1)
 
 
+async def test_split_shots_merges_consecutive_lines_into_one_dialogue_shot(
+    project_service, uow
+):
+    project = _project()
+    project.script = {
+        "scenes": [
+            {
+                "setting": "park",
+                "lines": [
+                    {"character_id": 1, "en": "Hello Lily", "zh": ""},
+                    {"character_id": 2, "en": "Hi Max", "zh": ""},
+                ],
+            }
+        ]
+    }
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.list_by_project = AsyncMock(return_value=[])
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    shots = await project_service.split_shots(1, model=None, confirm_replace=False)
+    assert len(shots) == 1
+    added_shots = [c.args[0] for c in uow.av_shots.add.call_args_list]
+    assert [ln["en"] for ln in added_shots[0].dialogue] == ["Hello Lily", "Hi Max"]
+
+
+async def test_create_shot_builds_blank_shot_without_dialogue(project_service, uow):
+    project = _project()
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.list_by_project = AsyncMock(return_value=[])
+    await project_service.create_shot(1, after_shot_id=None)
+    added_shot = uow.av_shots.add.call_args[0][0]
+    assert added_shot.dialogue == []
+    assert added_shot.ref_character_ids == []
+
+
 async def test_generate_video_requires_image_success(project_service, uow):
     shot = _shot()
     uow.av_projects.find_by_id = AsyncMock(return_value=_project())
@@ -290,6 +324,35 @@ async def test_generate_all_missing_scope_skips_fresh_success(project_service, u
     uow.av_shots.list_by_project = AsyncMock(return_value=[s1, s2])
     enqueued = await project_service.generate_all(1, types=[AssetKind.IMAGE], scope="missing")
     assert enqueued["image"] == 1  # 只有 s2
+
+
+async def test_generate_asset_audio_rejected_for_dialogue_shot(project_service, uow):
+    shot = _shot()  # _shot() 自带 dialogue 非空
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    with pytest.raises(ParamException) as e:
+        await project_service.generate_asset(1, 1, AssetKind.AUDIO, model=None, voice=None)
+    assert e.value.code == codes.AV_PARAM_INVALID
+
+
+async def test_generate_all_skips_audio_for_dialogue_shots(project_service, uow, queue):
+    shot = _shot()  # has_dialogue
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    enqueued = await project_service.generate_all(1, types=[AssetKind.AUDIO], scope="all")
+    assert enqueued["audio"] == 0
+
+
+async def test_generate_all_skips_audio_for_legacy_migrated_dialogue_shot(
+    project_service, uow, queue
+):
+    # 0010 迁移回填：旧字段 line_en 留存未清空，但 dialogue 已非空——必须按 dialogue 判定
+    shot = _shot()
+    shot.line_en = "Old leftover line"
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    enqueued = await project_service.generate_all(1, types=[AssetKind.AUDIO], scope="all")
+    assert enqueued["audio"] == 0
 
 
 # ---------------- 合成 ----------------

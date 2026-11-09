@@ -425,10 +425,8 @@ class AvProjectService:
         shot = AvShot.create(
             project_id=project_id,
             order_index=insert_at + 1,
-            speaker_character_id=None,
             ref_character_ids=[],
-            line_en="",
-            line_zh="",
+            dialogue=[],
             image_prompt="",
             models=dict(project.default_models),
             tts_voice=project.tts_voice,
@@ -506,6 +504,8 @@ class AvProjectService:
             raise ParamException(codes.AV_ASSET_BUSY, "该产物正在生成中")
         if kind == AssetKind.VIDEO and shot.asset_state(AssetKind.IMAGE) != AssetState.SUCCESS:
             raise ParamException(codes.AV_PRECONDITION_FAILED, "请先生成分镜图")
+        if kind == AssetKind.AUDIO and shot.has_dialogue:
+            raise ParamException(codes.AV_PARAM_INVALID, "对白镜无独立配音")
         if kind == AssetKind.AUDIO and not shot.line_en.strip():
             raise ParamException(codes.AV_PRECONDITION_FAILED, "请先填写台词")
         effective_model = model or project.default_models[self._KIND_MODEL_KEY[kind]]
@@ -535,7 +535,7 @@ class AvProjectService:
                 )
                 if not needs:
                     continue
-                if kind == AssetKind.AUDIO and not shot.line_en.strip():
+                if kind == AssetKind.AUDIO and (shot.has_dialogue or not shot.line_en.strip()):
                     continue
                 model = project.default_models[self._KIND_MODEL_KEY[kind]]
                 voice = project.tts_voice if kind == AssetKind.AUDIO else None
