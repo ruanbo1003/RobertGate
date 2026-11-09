@@ -97,6 +97,22 @@ class TestSegmentCmd:
         assert "-map [v]" in joined
         assert "-c:a aac" in joined
 
+    def test_audio_none_without_embedded_audio_adds_silent_source(self):
+        # 终审发现：纯画面镜（audio=None）若视频本身无音轨，-map 0:a? 会让
+        # 该分段完全没有音频流，和其它有声分段混在同一 concat 列表里会
+        # 破坏流结构（丢音/拼接失败）。has_embedded_audio=False 时必须补
+        # 一路静音输入，保证所有分段流结构一致。
+        cmd = build_segment_cmd(
+            video=Path("v.mp4"), audio=None, duration=8.0, out=Path("seg.mp4"),
+            has_embedded_audio=False,
+        )
+        joined = " ".join(cmd)
+        assert "anullsrc" in joined
+        assert "lavfi" in joined
+        assert "-map 0:a?" not in joined
+        # 静音源是第二路输入（索引 1），map 必须指向它而非不存在的 0:a
+        assert "-map 1:a" in joined
+
 
 class TestSegmentNormalization:
     def test_segment_normalizes_to_720x1280_before_pad(self):

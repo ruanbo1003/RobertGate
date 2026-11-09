@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -605,12 +606,27 @@ class AvProjectService:
             else:
                 duration = video_dur
             if s.has_dialogue and audio is None:
-                lines = [
+                # 对齐 key 必须是纯英文（whisper 只能匹配口语文本）；显示文本
+                # 可以是 en\nzh 双行——两者分开，对齐完再把时间戳贴回显示文本，
+                # 否则中文字符被当 token 计入总数，匹配率结构性地必然 <50%。
+                spoken = [ln["en"] for ln in s.dialogue]
+                display = [
                     (f"{ln['en']}\n{ln['zh']}" if ln["zh"] else ln["en"])
                     for ln in s.dialogue
                 ]
-                words = self._whisper.transcribe_words(video) if self._whisper else []
-                subtitles = align_dialogue(lines, words, duration)
+                try:
+                    words = (
+                        await asyncio.to_thread(self._whisper.transcribe_words, video)
+                        if self._whisper
+                        else []
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("whisper 转写失败，回退按台词长度均分镜时长", exc_info=True)
+                    words = []
+                aligned = align_dialogue(spoken, words, duration)
+                subtitles = [
+                    (text, start, end) for text, (_, start, end) in zip(display, aligned)
+                ]
             else:
                 text = s.line_en or (s.dialogue[0]["en"] if s.dialogue else "")
                 subtitles = [(text, 0.0, duration)]

@@ -474,6 +474,61 @@ async def test_compose_dialogue_shot_without_audio_uses_whisper_alignment(
     assert items[0].subtitles == [("Line 1!", 0.0, shot.duration_estimate)]
 
 
+async def test_compose_aligns_on_english_text_even_when_zh_present(
+    project_service, uow, runner, composer
+):
+    # 终审发现：对齐 key 曾经用 "en\nzh" 整句，中文字符被当 token 计入总数，
+    # whisper 只能匹配英文词，匹配率结构性地必然 <50% → 永远回退均分。
+    # 用两句话区分"真实对齐"与"均分"：均分会把中点切在 total/2，真实对齐
+    # 会切在词时间戳的实际边界上——两者在本用例下数值不同，足以证伪回退。
+    shot = _shot()
+    shot.dialogue = [
+        {"character_id": 1, "en": "Hello Lily!", "zh": "你好，莉莉！"},
+        {"character_id": 2, "en": "Hi Max, how are you?", "zh": "嗨，麦克斯，你好吗？"},
+    ]
+    shot.duration_estimate = 10.0
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="p/i")
+    shot.mark_running(AssetKind.VIDEO)
+    shot.mark_succeeded(AssetKind.VIDEO, path="p/v")
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    whisper = FakeWhisperAligner([
+        ("Hello", 0.0, 0.5), ("Lily", 0.5, 1.0),
+        ("Hi", 1.2, 1.5), ("Max", 1.5, 1.8), ("how", 1.8, 2.0), ("are", 2.0, 2.2), ("you", 2.2, 2.5),
+    ])
+    project_service._whisper = whisper
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    items = composer.compose.call_args[0][0]
+    subs = items[0].subtitles
+    assert subs[0] == ("Hello Lily!\n你好，莉莉！", 0.0, 1.0)
+    # 第二句开始于词时间戳 1.2（真实对齐），均分会是 5.0——数值上可区分
+    assert subs[1][0] == "Hi Max, how are you?\n嗨，麦克斯，你好吗？"
+    assert subs[1][1] == 1.2
+    assert subs[1][2] == 10.0  # 末句延伸到镜尾
+
+
+class _ExplodingWhisperAligner:
+    def transcribe_words(self, media):
+        raise RuntimeError("ffmpeg 解码失败（模拟 whisper 执行层异常）")
+
+
+async def test_compose_whisper_exception_falls_back_instead_of_failing_compose(
+    project_service, uow, runner, composer
+):
+    # 终审发现：whisper 异常此前会冒泡炸掉整次合成；回退应让合成照常成功。
+    shot = await _dialogue_ready_shot(1, 1)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    project_service._whisper = _ExplodingWhisperAligner()
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    composer.compose.assert_awaited_once()
+    items = composer.compose.call_args[0][0]
+    assert len(items[0].subtitles) == 1  # 回退均分，字幕不缺席
+
+
 async def test_compose_mixed_mux_and_dialogue_shots(project_service, uow, runner, composer):
     mux_shot = _ready_shot(1, 1)  # _ready_shot 生成全部产物，含物理 audio 文件
     dialogue_shot = await _dialogue_ready_shot(2, 2)

@@ -116,6 +116,26 @@ async def test_duration_snaps_to_ladder(requested, expected):
     assert captured["input"]["duration"] == expected
 
 
+async def test_success_with_malformed_result_json_raises_upstream_failed():
+    # 终审发现：kie 偶发返回脏 resultJson 字符串时 json.loads 抛的是
+    # JSONDecodeError（非 ServerException），router 捕获不到 → 不触发
+    # 兜底降级，直接把整镜标失败。kie.ai 口碑里这类"偶发故障"是真实存在的。
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            return httpx.Response(
+                200, json={"data": {"state": "success", "resultJson": "{not valid json"}}
+            )
+        raise AssertionError("should not download")
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+
+
 async def test_success_with_empty_result_urls_raises_upstream_failed():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/file-stream-upload"):

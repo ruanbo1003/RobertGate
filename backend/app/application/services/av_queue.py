@@ -47,6 +47,8 @@ class AvStorage(Protocol):
 
     async def probe_duration(self, rel_path: str) -> float | None: ...
 
+    def delete(self, rel_path: str) -> None: ...
+
 
 @dataclass
 class _Item:
@@ -306,6 +308,11 @@ class AvGenerationQueue:
             if model_tag:
                 # 对白镜：路由实际落地的渠道:模型（kie:... / openrouter:...），覆盖入队时的占位模型
                 shot.video_model = model_tag
+                if shot.audio_path:
+                    # 旧迁移镜残留的 TTS 配音已失效：视频现在自带同步语音，
+                    # 不清空的话合成会继续 mux 旧音频、丢弃新视频的口型同步声音
+                    self._storage.delete(shot.audio_path)
+                    shot.retire_audio()
             if item.voice:
                 shot.audio_voice = item.voice
             project = await uow.av_projects.find_by_id(item.project_id)

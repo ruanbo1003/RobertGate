@@ -146,6 +146,10 @@ class FakeStorage:
             return self.saved[rel_path]
         return self.files[rel_path]
 
+    def delete(self, rel_path: str) -> None:
+        self.saved.pop(rel_path, None)
+        self.files.pop(rel_path, None)
+
     async def probe_duration(self, rel_path: str) -> float | None:
         return 3.3
 
@@ -368,6 +372,29 @@ async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     await drain(queue)
     call = next(c for c in client.calls if c[0] == "video")
     assert call[1] == "prompt 1"
+
+
+async def test_legacy_shot_dialogue_video_success_clears_old_audio(queue, store, storage):
+    # 终审发现：旧迁移镜（dialogue 非空但磁盘留有 audio.mp3）重新生成对白镜
+    # video 成功后，若不清空 audio_path，合成时仍会 mux 旧 TTS——丢弃新视频
+    # 自带的同步语音。
+    shot = store["shots"][1]
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    # 模拟旧迁移残留的物理音频文件
+    shot.mark_running(AssetKind.AUDIO)
+    shot.mark_succeeded(AssetKind.AUDIO, path="projects/1/shots/1/audio.mp3", audio_duration=3.0)
+    storage.saved["projects/1/shots/1/audio.mp3"] = b"old-tts-audio"
+    assert shot.audio_path == "projects/1/shots/1/audio.mp3"
+
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+
+    assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
+    assert shot.audio_path is None
+    assert shot.asset_state(AssetKind.AUDIO) == AssetState.PENDING
+    assert "projects/1/shots/1/audio.mp3" not in storage.saved
 
 
 async def test_dialogue_shot_video_success_records_used_model_tag(queue, store, storage):

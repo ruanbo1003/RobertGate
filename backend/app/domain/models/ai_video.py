@@ -469,6 +469,16 @@ class AvShot(Base):
         self._set(kind, "error", error)
         self.updated_at = _now()
 
+    def retire_audio(self) -> None:
+        """对白镜 video 改走音视同出路由后，旧迁移镜残留的 TTS 配音产物失效：
+        重置为初始 pending 态（磁盘文件由调用方删除）。"""
+        self.audio_state = AssetState.PENDING
+        self.audio_path = None
+        self.audio_error = None
+        self.audio_version = 0
+        self.audio_duration = None
+        self.updated_at = _now()
+
     # ---- 过期链 ----
 
     def apply_patch(self, **fields: Any) -> list[AssetKind]:

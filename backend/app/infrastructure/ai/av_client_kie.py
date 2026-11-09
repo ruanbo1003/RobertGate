@@ -132,7 +132,12 @@ class KieVideoClient:
             if state == "success":
                 result_json = data.get("resultJson")
                 if isinstance(result_json, str):
-                    result_json = json.loads(result_json or "{}")
+                    try:
+                        result_json = json.loads(result_json or "{}")
+                    except json.JSONDecodeError as e:
+                        raise ServerException(
+                            codes.AV_UPSTREAM_FAILED, f"任务成功但 resultJson 解析失败：{e}"
+                        ) from e
                 urls = (result_json or {}).get("resultUrls") or []
                 if not urls:
                     raise ServerException(codes.AV_UPSTREAM_FAILED, "任务成功但未返回产物")
