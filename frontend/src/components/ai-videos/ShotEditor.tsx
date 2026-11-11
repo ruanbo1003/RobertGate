@@ -13,6 +13,7 @@ import {
 import type {
   AssetKind,
   CharacterRef,
+  DialogueLine,
   ModelsMap,
   Shot,
   ShotPatch,
@@ -41,13 +42,14 @@ export default function ShotEditor({
   onGenerate,
   onDelete,
 }: ShotEditorProps) {
-  const [lineEn, setLineEn] = useState(shot.line_en)
-  const [lineZh, setLineZh] = useState(shot.line_zh)
+  const MAX_DIALOGUE_LINES = 4
+  const hasDialogue = shot.dialogue.length > 0
+  const [dialogue, setDialogue] = useState<DialogueLine[]>(shot.dialogue)
   const [prompt, setPrompt] = useState(shot.image_prompt)
   const [imageModel, setImageModel] = useState(shot.image.model)
   const [videoModel, setVideoModel] = useState(shot.video.model)
-  const [audioModel, setAudioModel] = useState(shot.audio.model)
-  const [voice, setVoice] = useState(shot.audio.voice || defaultVoice)
+  const [audioModel, setAudioModel] = useState(shot.audio?.model ?? '')
+  const [voice, setVoice] = useState(shot.audio?.voice || defaultVoice)
   const [videoPrompt, setVideoPrompt] = useState(shot.video_prompt)
 
   const voices = (models.tts ?? []).find((m) => m.id === audioModel)?.voices ?? []
@@ -59,11 +61,36 @@ export default function ShotEditor({
       : [...shot.ref_character_ids, id]
     onPatch({ ref_character_ids: next })
   }
+
+  const commitDialogue = (next: DialogueLine[]) => {
+    setDialogue(next)
+    onPatch({ dialogue: next })
+  }
+  const updateLineField = (index: number, field: 'en' | 'zh', value: string) => {
+    setDialogue((prev) => prev.map((ln, i) => (i === index ? { ...ln, [field]: value } : ln)))
+  }
+  const commitLineFieldIfChanged = (index: number, field: 'en' | 'zh') => {
+    const original = shot.dialogue[index]?.[field] ?? ''
+    if (dialogue[index]?.[field] !== original) onPatch({ dialogue })
+  }
+  const setLineSpeaker = (index: number, characterId: number | null) => {
+    commitDialogue(
+      dialogue.map((ln, i) => (i === index ? { ...ln, character_id: characterId } : ln)),
+    )
+  }
+  const addDialogueLine = () => {
+    if (dialogue.length >= MAX_DIALOGUE_LINES) return
+    commitDialogue([...dialogue, { character_id: null, en: '', zh: '' }])
+  }
+  const removeDialogueLine = (index: number) => {
+    commitDialogue(dialogue.filter((_, i) => i !== index))
+  }
+
   const errors = (
     [
       ['image', '分镜图', shot.image.error],
       ['video', '视频', shot.video.error],
-      ['audio', '配音', shot.audio.error],
+      ['audio', '配音', shot.audio?.error ?? null],
     ] as const
   ).filter(([, , e]) => !!e)
 
@@ -79,6 +106,7 @@ export default function ShotEditor({
     options: ModelsMap['t2i']
     canGenerate: boolean
     blockReason?: string
+    readOnlyModel?: boolean
   }> = [
     {
       kind: 'image',
@@ -98,18 +126,20 @@ export default function ShotEditor({
       options: models.i2v ?? [],
       canGenerate: shot.image.state === 'success',
       blockReason: '需先生成分镜图',
+      readOnlyModel: hasDialogue,
     },
-    {
+  ]
+  if (shot.audio) {
+    productRows.push({
       kind: 'audio',
       label: '配音',
       icon: Volume2,
       model: audioModel,
       setModel: setAudioModel,
       options: models.tts ?? [],
-      canGenerate: !!lineEn.trim(),
-      blockReason: '需先填写台词',
-    },
-  ]
+      canGenerate: true,
+    })
+  }
 
   return (
     <section className="flex-1 min-w-0 h-full overflow-y-auto">
@@ -131,48 +161,72 @@ export default function ShotEditor({
           </div>
         </div>
 
-        {/* 台词 */}
+        {/* 台词（可多句，每句一个说话角色；空 = 纯画面镜） */}
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
-            <label htmlFor="shot-line-en" className="text-[13px] font-semibold text-text-primary">
-              台词
-            </label>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-text-muted">说话角色</span>
-              <select
-                value={shot.speaker_character_id ?? ''}
-                onChange={(e) =>
-                  onPatch({ speaker_character_id: e.target.value ? Number(e.target.value) : null })
-                }
-                aria-label="说话角色"
-                className="h-7 px-2 text-xs bg-card border border-border rounded-[var(--radius-sm)] text-text-primary cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+            <span className="text-[13px] font-semibold text-text-primary">台词</span>
+            {dialogue.length < MAX_DIALOGUE_LINES && (
+              <button
+                type="button"
+                onClick={addDialogueLine}
+                className="text-[11px] font-semibold text-primary hover:text-primary-hover transition-colors cursor-pointer"
               >
-                <option value="">无</option>
-                {characters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                + 添加台词
+              </button>
+            )}
           </div>
-          <div className="flex flex-col gap-1.5 p-3 bg-card border border-border rounded-[var(--radius-sm)]">
-            <input
-              id="shot-line-en"
-              value={lineEn}
-              onChange={(e) => setLineEn(e.target.value)}
-              onBlur={() => lineEn !== shot.line_en && onPatch({ line_en: lineEn })}
-              placeholder="English line..."
-              className="w-full text-base font-semibold text-text-primary bg-transparent focus:outline-none placeholder:text-text-muted placeholder:font-normal"
-            />
-            <input
-              value={lineZh}
-              onChange={(e) => setLineZh(e.target.value)}
-              onBlur={() => lineZh !== shot.line_zh && onPatch({ line_zh: lineZh })}
-              placeholder="中文释义…"
-              aria-label="中文释义"
-              className="w-full text-xs text-text-muted bg-transparent focus:outline-none placeholder:text-text-muted"
-            />
+          <div className="flex flex-col gap-2">
+            {dialogue.length === 0 && (
+              <p className="text-xs text-text-muted px-3 py-2">这是一个纯画面镜，没有台词</p>
+            )}
+            {dialogue.map((line, index) => (
+              <div
+                key={index}
+                className="flex flex-col gap-1.5 p-3 bg-card border border-border rounded-[var(--radius-sm)]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <select
+                    value={line.character_id ?? ''}
+                    onChange={(e) =>
+                      setLineSpeaker(index, e.target.value ? Number(e.target.value) : null)
+                    }
+                    aria-label={`第 ${index + 1} 句说话角色`}
+                    className="h-7 px-2 text-xs bg-page border border-border rounded-[var(--radius-sm)] text-text-primary cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="">旁白</option>
+                    {characters.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeDialogueLine(index)}
+                    aria-label={`删除第 ${index + 1} 句台词`}
+                    className="w-6 h-6 flex items-center justify-center rounded-[var(--radius-sm)] text-text-muted hover:text-error hover:bg-error-light transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <input
+                  value={line.en}
+                  onChange={(e) => updateLineField(index, 'en', e.target.value)}
+                  onBlur={() => commitLineFieldIfChanged(index, 'en')}
+                  placeholder="English line..."
+                  aria-label={`第 ${index + 1} 句英文台词`}
+                  className="w-full text-sm font-semibold text-text-primary bg-transparent focus:outline-none placeholder:text-text-muted placeholder:font-normal"
+                />
+                <input
+                  value={line.zh}
+                  onChange={(e) => updateLineField(index, 'zh', e.target.value)}
+                  onBlur={() => commitLineFieldIfChanged(index, 'zh')}
+                  placeholder="中文释义…"
+                  aria-label={`第 ${index + 1} 句中文释义`}
+                  className="w-full text-xs text-text-muted bg-transparent focus:outline-none placeholder:text-text-muted"
+                />
+              </div>
+            ))}
           </div>
         </div>
 
@@ -244,6 +298,7 @@ export default function ShotEditor({
         <div className="flex flex-col gap-2.5 -mt-1.5">
           {productRows.map((row) => {
             const asset = shot[row.kind]
+            if (!asset) return null
             const busy = asset.state === 'running'
             const Icon = row.icon
             const actionLabel = busy
@@ -261,7 +316,7 @@ export default function ShotEditor({
                   {row.label}
                 </span>
                 <StatusChip state={asset.state} stale={asset.stale} />
-                {row.kind === 'audio' && shot.audio.duration != null && (
+                {row.kind === 'audio' && shot.audio?.duration != null && (
                   <span className="text-[11px] text-text-muted">{shot.audio.duration}s</span>
                 )}
                 <div className="flex-1" />
@@ -279,7 +334,13 @@ export default function ShotEditor({
                     ))}
                   </select>
                 )}
-                <ModelSelect compact value={row.model} options={row.options} onChange={row.setModel} />
+                {row.readOnlyModel ? (
+                  <span className="h-8 px-2 flex items-center text-[11px] font-mono text-text-muted">
+                    {shot.video.model || '（待生成，固定走对白镜路由）'}
+                  </span>
+                ) : (
+                  <ModelSelect compact value={row.model} options={row.options} onChange={row.setModel} />
+                )}
                 <button
                   onClick={() =>
                     onGenerate(row.kind, row.model, row.kind === 'audio' ? effectiveVoice : undefined)
@@ -329,8 +390,13 @@ export default function ShotEditor({
               alt={`镜 ${shot.order} 分镜图`}
               className="w-[140px] aspect-[9/16] object-cover rounded-[var(--radius-md)] border border-border"
             />
-            {shot.audio.url && shot.audio.state === 'success' && (
-              <audio controls src={resolveAssetUrl(shot.audio.url)} className="h-9 mt-1">
+            {shot.audio?.url && shot.audio.state === 'success' && (
+              <audio
+                key={shot.audio.version}
+                controls
+                src={`${resolveAssetUrl(shot.audio.url)}${shot.audio.url.includes('?') ? '&' : '?'}v=${shot.audio.version}`}
+                className="h-9 mt-1"
+              >
                 <track kind="captions" />
               </audio>
             )}

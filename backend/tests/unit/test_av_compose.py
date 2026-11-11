@@ -8,6 +8,7 @@ from app.infrastructure.av_compose import (
     build_segment_cmd,
     build_srt,
     format_srt_timestamp,
+    offset_subtitles,
 )
 
 
@@ -22,8 +23,8 @@ class TestSrtTimestamp:
 
 
 class TestBuildSrt:
-    def test_sequential_entries_accumulate_time(self):
-        srt = build_srt([("Hello!", 2.0), ("Bye bye!", 3.0)])
+    def test_explicit_start_end_entries(self):
+        srt = build_srt([("Hello!", 0.0, 2.0), ("Bye bye!", 2.0, 5.0)])
         blocks = srt.strip().split("\n\n")
         assert len(blocks) == 2
         assert blocks[0].splitlines() == [
@@ -37,11 +38,37 @@ class TestBuildSrt:
             "Bye bye!",
         ]
 
-    def test_empty_line_skipped_but_time_advances(self):
-        srt = build_srt([("", 2.0), ("Hi!", 1.0)])
+    def test_empty_line_skipped(self):
+        srt = build_srt([("", 2.0, 3.0), ("Hi!", 3.0, 4.0)])
         blocks = srt.strip().split("\n\n")
         assert len(blocks) == 1
-        assert "00:00:02,000 --> 00:00:03,000" in blocks[0]
+        assert "00:00:03,000 --> 00:00:04,000" in blocks[0]
+
+    def test_offsets_are_not_recomputed_by_build_srt(self):
+        # 全局偏移由调用方（compose 组装阶段）累加好，build_srt 只管格式化
+        srt = build_srt([("Mid-clip line", 10.5, 12.0)])
+        assert "00:00:10,500 --> 00:00:12,000" in srt
+
+
+class TestOffsetSubtitles:
+    def test_offsets_accumulate_by_preceding_duration(self):
+        result = offset_subtitles([
+            ([("Hi", 0.0, 2.0)], 5.0),
+            ([("Bye", 0.0, 3.0)], 3.0),
+        ])
+        assert result == [("Hi", 0.0, 2.0), ("Bye", 5.0, 8.0)]
+
+    def test_mixed_mux_and_dialogue_offsets_correctly(self):
+        # 镜1 走 mux（单条字幕覆盖全镜），镜2 走对白对齐（多条子字幕）——混排项目的全局偏移
+        result = offset_subtitles([
+            ([("Line one", 0.0, 4.0)], 4.0),
+            ([("Hello", 0.0, 1.0), ("Hi", 1.0, 2.5)], 2.5),
+        ])
+        assert result == [
+            ("Line one", 0.0, 4.0),
+            ("Hello", 4.0, 5.0),
+            ("Hi", 5.0, 6.5),
+        ]
 
 
 class TestSegmentCmd:
@@ -57,6 +84,34 @@ class TestSegmentCmd:
         assert "tpad=stop_mode=clone" in joined
         assert "-t 6.5" in joined
         assert str(Path("seg.mp4")) == cmd[-1]
+
+    def test_audio_none_omits_second_input_and_maps_embedded_audio(self):
+        cmd = build_segment_cmd(
+            video=Path("v.mp4"), audio=None, duration=8.0, out=Path("seg.mp4")
+        )
+        # 只有一个 -i（视频），没有第二路音频输入
+        assert cmd.count("-i") == 1
+        joined = " ".join(cmd)
+        assert "a.mp3" not in joined
+        assert "-map 0:a?" in joined
+        assert "-map [v]" in joined
+        assert "-c:a aac" in joined
+
+    def test_audio_none_without_embedded_audio_adds_silent_source(self):
+        # 终审发现：纯画面镜（audio=None）若视频本身无音轨，-map 0:a? 会让
+        # 该分段完全没有音频流，和其它有声分段混在同一 concat 列表里会
+        # 破坏流结构（丢音/拼接失败）。has_embedded_audio=False 时必须补
+        # 一路静音输入，保证所有分段流结构一致。
+        cmd = build_segment_cmd(
+            video=Path("v.mp4"), audio=None, duration=8.0, out=Path("seg.mp4"),
+            has_embedded_audio=False,
+        )
+        joined = " ".join(cmd)
+        assert "anullsrc" in joined
+        assert "lavfi" in joined
+        assert "-map 0:a?" not in joined
+        # 静音源是第二路输入（索引 1），map 必须指向它而非不存在的 0:a
+        assert "-map 1:a" in joined
 
 
 class TestSegmentNormalization:

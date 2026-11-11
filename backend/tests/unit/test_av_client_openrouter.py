@@ -138,6 +138,45 @@ async def test_generate_video_full_flow_and_duration_snap():
     assert frame["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+async def test_generate_video_generate_audio_flag_sets_payload():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/videos"):
+            captured.update(json.loads(request.content))
+            return httpx.Response(202, json={"id": "job1", "status": "pending"})
+        if path.endswith("/videos/job1") and "content" not in path:
+            return httpx.Response(200, json={"id": "job1", "status": "completed"})
+        if path.endswith("/videos/job1/content"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected {request.method} {path}")
+
+    await make_client(handler).generate_video(
+        b"frame", "two dogs talk", "bytedance/seedance-2.0-fast",
+        duration_seconds=8, generate_audio=True,
+    )
+    assert captured["generate_audio"] is True
+
+
+async def test_generate_video_without_generate_audio_omits_field():
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if request.method == "POST" and path.endswith("/videos"):
+            captured.update(json.loads(request.content))
+            return httpx.Response(202, json={"id": "job1", "status": "pending"})
+        if path.endswith("/videos/job1") and "content" not in path:
+            return httpx.Response(200, json={"id": "job1", "status": "completed"})
+        if path.endswith("/videos/job1/content"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected {request.method} {path}")
+
+    await make_client(handler).generate_video(b"frame", "p", "m", duration_seconds=5)
+    assert "generate_audio" not in captured
+
+
 async def test_generate_video_failed_status_raises_with_reason():
     def handler(request: httpx.Request) -> httpx.Response:
         if request.method == "POST":
@@ -159,33 +198,50 @@ def _sse(chunks: list[dict]) -> bytes:
     return "".join(lines).encode()
 
 
-async def test_generate_speech_concatenates_pcm_chunks_and_transcodes(monkeypatch):
-    import app.infrastructure.ai.av_client_openrouter as mod
+def _pcm_sse(*parts: bytes) -> bytes:
+    return _sse(
+        [{"choices": [{"delta": {"audio": {"data": base64.b64encode(p).decode()}}}]} for p in parts]
+    )
 
-    async def fake_transcode(pcm: bytes, ffmpeg_bin: str = "ffmpeg") -> bytes:
-        return b"MP3:" + pcm
 
-    monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
-    captured: dict = {}
-    a, b = base64.b64encode(b"pcm-a").decode(), base64.b64encode(b"pcm-b").decode()
+def _speech_handler(captured: dict | None = None):
+    """speech（stream）mock；记录是否发生过非 stream 的额外调用（如转写）。"""
+    counts = {"speech": 0, "other": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        captured.update(json.loads(request.content))
-        body = _sse(
-            [
-                {"choices": [{"delta": {"audio": {"data": a}}}]},
-                {"choices": [{"delta": {"content": "ignored text"}}]},
-                {"choices": [{"delta": {"audio": {"data": b}}}]},
-            ]
-        )
-        return httpx.Response(200, content=body)
+        payload = json.loads(request.content)
+        if payload.get("stream"):
+            counts["speech"] += 1
+            if captured is not None and counts["speech"] == 1:
+                captured.update(payload)
+            return httpx.Response(200, content=_pcm_sse(b"pcm-a", b"pcm-b"))
+        counts["other"] += 1
+        return httpx.Response(200, json={"choices": [{"message": {"content": ""}}]})
 
+    return handler, counts
+
+
+@pytest.fixture
+def fake_transcode(monkeypatch):
+    import app.infrastructure.ai.av_client_openrouter as mod
+
+    async def _fake(pcm: bytes, ffmpeg_bin: str = "ffmpeg", tempo: float = 1.0) -> bytes:
+        return b"MP3:" + pcm
+
+    monkeypatch.setattr(mod, "_pcm16_to_mp3", _fake)
+
+
+async def test_generate_speech_repeat_prompt_pcm16_single_call(fake_transcode):
+    captured: dict = {}
+    handler, counts = _speech_handler(captured)
     out = await make_client(handler).generate_speech("Hi there", "openai/gpt-audio", "alloy")
     assert out == b"MP3:pcm-apcm-b"
-    assert captured["modalities"] == ["text", "audio"]
-    # OpenAI 流式音频仅支持 pcm16，客户端收完后 ffmpeg 转 mp3
+    # OpenAI 流式音频仅支持 pcm16；台词用 Repeat after me 包裹；系统指令要求慢速童声
     assert captured["audio"] == {"voice": "alloy", "format": "pcm16"}
-    assert captured["stream"] is True
+    assert captured["messages"][1]["content"] == 'Repeat after me exactly: "Hi there"'
+    assert "slowly" in captured["messages"][0]["content"]
+    # 不做转写自检（Robert 拍板：省 token，人工判断），只发一次请求
+    assert counts == {"speech": 1, "other": 0}
 
 
 async def test_generate_speech_no_audio_raises():
@@ -197,6 +253,27 @@ async def test_generate_speech_no_audio_raises():
     with pytest.raises(ServerException) as ei:
         await make_client(handler).generate_speech("Hi", "m", "alloy")
     assert ei.value.code == codes.AV_UPSTREAM_FAILED
+
+
+async def test_generate_speech_uses_configured_ffmpeg_bin(monkeypatch):
+    import app.infrastructure.ai.av_client_openrouter as mod
+
+    seen: dict = {}
+
+    async def fake_transcode(pcm: bytes, ffmpeg_bin: str = "ffmpeg", tempo: float = 1.0) -> bytes:
+        seen["bin"] = ffmpeg_bin
+        seen["tempo"] = tempo
+        return b"mp3"
+
+    monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
+    handler, _ = _speech_handler()
+    client = OpenRouterAvClient(
+        api_key="k", base_url=BASE,
+        transport=httpx.MockTransport(handler), poll_interval=0.0,
+        ffmpeg_bin="/opt/ffmpeg-full/bin/ffmpeg", tts_tempo=0.9,
+    )
+    assert await client.generate_speech("Hi", "m", "alloy") == b"mp3"
+    assert seen == {"bin": "/opt/ffmpeg-full/bin/ffmpeg", "tempo": 0.9}
 
 
 # ---------------- json ----------------
@@ -213,30 +290,3 @@ async def test_generate_json_parses_content():
 
     assert await make_client(handler).generate_json("s", "u", "m") == {"scenes": []}
 
-
-async def test_generate_speech_uses_configured_ffmpeg_bin(monkeypatch):
-    import app.infrastructure.ai.av_client_openrouter as mod
-
-    seen: dict = {}
-
-    async def fake_transcode(pcm: bytes, ffmpeg_bin: str = "ffmpeg") -> bytes:
-        seen["bin"] = ffmpeg_bin
-        return b"mp3"
-
-    monkeypatch.setattr(mod, "_pcm16_to_mp3", fake_transcode)
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            content=_sse(
-                [{"choices": [{"delta": {"audio": {"data": base64.b64encode(b"p").decode()}}}]}]
-            ),
-        )
-
-    client = OpenRouterAvClient(
-        api_key="k", base_url=BASE,
-        transport=httpx.MockTransport(handler), poll_interval=0.0,
-        ffmpeg_bin="/opt/ffmpeg-full/bin/ffmpeg",
-    )
-    assert await client.generate_speech("Hi", "m", "alloy") == b"mp3"
-    assert seen["bin"] == "/opt/ffmpeg-full/bin/ffmpeg"

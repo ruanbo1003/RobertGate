@@ -9,11 +9,21 @@ from app.infrastructure.data.av_models import (
 
 
 def test_registry_is_openrouter_only_and_typed():
-    assert set(AV_MODELS) == {"llm", "t2i", "i2v", "tts"}
-    for entries in AV_MODELS.values():
+    assert set(AV_MODELS) == {"llm", "t2i", "i2v", "tts", "dialogue_video"}
+    for key, entries in AV_MODELS.items():
+        if key == "dialogue_video":
+            continue  # 对白镜唯一跨渠道段（kie.ai 主 + OpenRouter 兜底），仅展示用
         assert entries
         for m in entries:
             assert "provider" not in m
+
+
+def test_dialogue_video_segment_is_display_only_with_channel_tagged_ids():
+    entries = AV_MODELS["dialogue_video"]
+    assert entries
+    ids = {m["id"] for m in entries}
+    assert "kie:gemini-omni-video" in ids
+    assert "openrouter:bytedance/seedance-2.0-fast" in ids
 
 
 def test_default_models():
