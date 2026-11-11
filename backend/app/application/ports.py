@@ -6,11 +6,18 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from app.application.dto.invest_report import (
+    ChapterDraft,
+    ChatOutcome,
+    ImpactDraft,
+    ResearchContext,
+    TemplateDraft,
+)
 from app.domain.models.legal import LawArticle
 
 
@@ -113,6 +120,58 @@ class AvGenClient(Protocol):
         self, image: bytes, prompt: str, duration_seconds: int
     ) -> tuple[bytes, str]:
         """对白镜（音视同出，多角色轮流说话+口型同步），返回 (mp4 bytes, 实际使用渠道:模型)。"""
+        ...
+
+
+class DocumentParser(Protocol):
+    """invest-reports 文档/URL 解析端口（实现：infrastructure/ir_parsers.py）。"""
+
+    async def parse_document(self, path: Path, agent: "IrAgent") -> tuple[str, str]:
+        """返回 (text, quality)；quality: ok | low。"""
+        ...
+
+    async def parse_url(self, url: str) -> str: ...
+
+
+class IrAgent(Protocol):
+    """invest-reports Agent 端口（实现：infrastructure/ai/ir_agent_*）。
+
+    上游失败约定：余额/Key 全局错误抛 ServerException(codes.IR_UPSTREAM_QUOTA)，
+    其余抛 ServerException(codes.IR_UPSTREAM_FAILED)。
+    """
+
+    async def learn_template(self, samples_text: list[str], report_type: str) -> "TemplateDraft":
+        """从范本全文归纳模板（章节骨架 + 写作要点）。"""
+        ...
+
+    async def research_chapter(
+        self,
+        ctx: "ResearchContext",
+        on_event: Callable[[str, str, str | None], None],
+    ) -> "ChapterDraft":
+        """逐章研究写作；on_event(kind, text, url) 回调研究动作。"""
+        ...
+
+    async def rewrite_paragraph(
+        self, paragraph_text: str, instruction: str, citations_catalog: list[dict]
+    ) -> str:
+        """重写单段；只允许沿用 catalog 中既有的全局 ⟦c:id⟧ 标记。"""
+        ...
+
+    async def chat(
+        self, ctx_summary: str, chapter: dict | None, message: str
+    ) -> "ChatOutcome":
+        """对话；指定章节且需要改稿时返回 updated=True 与整章新段落。"""
+        ...
+
+    async def analyze_impact(
+        self, source_text: str, done_chapters: list[dict]
+    ) -> "ImpactDraft":
+        """新资料影响分析：返回建议更新的章节 key 与理由。"""
+        ...
+
+    async def parse_image(self, image_bytes: bytes, hint: str) -> str:
+        """多模态解析图片/扫描件为文本（OCR/描述）。"""
         ...
 
 

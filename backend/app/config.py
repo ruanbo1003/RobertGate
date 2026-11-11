@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     AV_IMAGE_SIZE: str = "720x1280"
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+    # invest-reports（投资报告 Agent，走 OPENROUTER_API_KEY）
+    IR_DATA_DIR: str = "data/invest-reports"
+    IR_LLM_MODEL: str = "deepseek/deepseek-v3.2"
+    IR_SEARCH_MODEL: str = "deepseek/deepseek-v3.2:online"
     # kie.ai（对白镜音视同出渠道，功能见 docs/superpowers/specs/2026-11-09-av-dialogue-shots-design.md）
     KIE_API_KEY: str = ""
     KIE_BASE_URL: str = "https://api.kie.ai/api/v1"

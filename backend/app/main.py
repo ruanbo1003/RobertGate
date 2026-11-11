@@ -12,6 +12,7 @@ from app.interfaces.api.middleware import ApiLoggingMiddleware, ErrorHandlerMidd
 from app.interfaces.api.routers.admin_hanzi import router as admin_hanzi_router
 from app.interfaces.api.routers.ai_tools import router as ai_tools_router
 from app.interfaces.api.routers.ai_videos import router as ai_videos_router
+from app.interfaces.api.routers.invest_reports import router as invest_reports_router
 from app.interfaces.api.routers.t2i import router as t2i_router
 from app.interfaces.api.routers.auth import router as auth_router
 from app.interfaces.api.routers.gallery import router as gallery_router
@@ -31,6 +32,11 @@ async def lifespan(app: FastAPI):
     from app.infrastructure.legal.factory import get_legal_kb
 
     app.state.legal_kb_task = asyncio.create_task(get_legal_kb().build_index())
+    # invest-reports：研究队列为内存态，重启后回收卡死的 researching/updating 章节
+    from app.application.services.ir_queue import recover_stuck_chapters
+    from app.infrastructure.repositories.uow import new_uow
+
+    await recover_stuck_chapters(new_uow)
     yield
 
 
@@ -40,6 +46,7 @@ ROUTERS: list[tuple[APIRouter, str]] = [
     (ai_tools_router, "/api/v1"),
     (t2i_router, "/api/v1"),
     (ai_videos_router, "/api/v1"),
+    (invest_reports_router, "/api/v1"),
     (hanzi_router, "/api/v1"),
     (admin_hanzi_router, "/api/v1"),
     (legal_router, "/api/v1"),

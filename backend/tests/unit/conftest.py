@@ -30,6 +30,12 @@ REPO_NAMES = (
     "av_projects",
     "av_project_characters",
     "av_shots",
+    "ir_samples",
+    "ir_templates",
+    "ir_projects",
+    "ir_chapters",
+    "ir_sources",
+    "ir_chats",
 )
 
 

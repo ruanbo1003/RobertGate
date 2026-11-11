@@ -14,6 +14,9 @@ from app.application.ports import AIClient
 from app.application.services.admin_hanzi_service import AdminHanziService
 from app.application.services.av_queue import AvGenerationQueue
 from app.application.services.av_service import AvCharacterService, AvProjectService
+from app.application.services.ir_library_service import IrLibraryService
+from app.application.services.ir_project_service import IrProjectService
+from app.application.services.ir_queue import IrResearchQueue
 from app.application.services.auth_service import AuthService
 from app.application.services.english_service import EnglishService
 from app.application.services.gallery_service import GalleryService
@@ -27,10 +30,12 @@ from app.config import get_settings
 from app.domain.errors import AuthException, codes
 from app.domain.repositories.uow import UnitOfWork
 from app.infrastructure.ai.av_client import get_av_client
+from app.infrastructure.ai.ir_agent_factory import get_ir_agent
 from app.infrastructure.ai.factory import get_ai_client
 from app.infrastructure.ai.image_fetch import fetch_image_bytes
 from app.infrastructure.av_compose import FfmpegComposer
 from app.infrastructure.av_storage import FsAvStorage
+from app.infrastructure.ir_parsers import FsDocumentParser
 from app.infrastructure.av_whisper import WhisperAligner
 from app.infrastructure.data.av_models import default_model, default_voice, reference_mode
 from app.infrastructure.legal.factory import get_legal_chat, get_legal_kb
@@ -87,6 +92,20 @@ def get_av_queue() -> AvGenerationQueue:
         storage=get_av_storage(),
         runner=get_task_runner(),
         reference_mode=reference_mode,
+    )
+
+
+@lru_cache
+def get_ir_storage() -> FsAvStorage:
+    return FsAvStorage(Path(get_settings().IR_DATA_DIR))
+
+
+@lru_cache
+def get_ir_queue() -> IrResearchQueue:
+    return IrResearchQueue(
+        uow_factory=new_uow,
+        agent=get_ir_agent(),
+        runner=get_task_runner(),
     )
 
 
@@ -189,6 +208,36 @@ async def get_t2i_task_service(
 ) -> T2ITaskService:
     generator = T2IGenerator(new_uow, ai, fetch_image_bytes, get_task_runner())
     return T2ITaskService(uow=uow, generator=generator)
+
+
+async def get_ir_library_service(
+    uow: UnitOfWork = Depends(get_uow),
+) -> IrLibraryService:
+    return IrLibraryService(
+        uow=uow,
+        agent=get_ir_agent(),
+        storage=get_ir_storage(),
+        runner=get_task_runner(),
+        uow_factory=new_uow,
+        parser=FsDocumentParser(),
+    )
+
+
+async def get_ir_project_service(
+    uow: UnitOfWork = Depends(get_uow),
+) -> IrProjectService:
+    from app.infrastructure.ir_export import build_docx
+
+    return IrProjectService(
+        uow=uow,
+        agent=get_ir_agent(),
+        queue=get_ir_queue(),
+        storage=get_ir_storage(),
+        runner=get_task_runner(),
+        uow_factory=new_uow,
+        parser=FsDocumentParser(),
+        exporter=build_docx,
+    )
 
 
 async def get_av_character_service(
