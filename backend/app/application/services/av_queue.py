@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from app.application.ports import AvGenClient, TaskRunner
+from app.application.services.av_dialogue import build_dialogue_prompt
 from app.domain.errors import ServerException, codes
 from app.domain.models.ai_video import AssetKind, AssetState
 
@@ -45,6 +46,8 @@ class AvStorage(Protocol):
     def read(self, rel_path: str) -> bytes: ...
 
     async def probe_duration(self, rel_path: str) -> float | None: ...
+
+    def delete(self, rel_path: str) -> None: ...
 
 
 @dataclass
@@ -157,7 +160,7 @@ class AvGenerationQueue:
                 item.state = "running"
                 await self._mark(item, AssetState.RUNNING)
                 try:
-                    data = await self._generate(item)
+                    data, model_tag = await self._generate(item)
                 except ServerException as e:
                     if e.code == codes.AV_UPSTREAM_QUOTA:
                         self._paused = True
@@ -170,7 +173,7 @@ class AvGenerationQueue:
                     logger.exception("av 生成异常 shot=%s kind=%s", item.shot_id, item.kind)
                     await self._fail(item, str(e)[:300])
                     return
-                await self._succeed(item, data)
+                await self._succeed(item, data, model_tag)
         finally:
             self._items.pop(key, None)
 
@@ -222,12 +225,33 @@ class AvGenerationQueue:
                 )
             else:
                 prefix_parts.append(f"{char.name}: {char.appearance_prompt}.")
+        if refs:
+            # 参考图多为多视角设定图：只取外形，严禁复刻 sheet 版式
+            prefix_parts.append(
+                "Use the reference images only for the characters' appearance; "
+                "do not copy the character-sheet layout; "
+                "render one single coherent scene."
+            )
         prompt = shot.image_prompt
         if prefix_parts:
             prompt = " ".join(prefix_parts) + " " + prompt
         return prompt, refs
 
-    async def _generate(self, item: _Item) -> bytes:
+    async def _collect_speakers(self, uow, dialogue: list[dict]) -> list[dict]:
+        """dialogue 里出现过的说话角色（按首次出现保序去重），缺字符档忽略。"""
+        speakers: list[dict] = []
+        seen: set[int] = set()
+        for line in dialogue:
+            cid = line["character_id"]
+            if cid is None or cid in seen:
+                continue
+            seen.add(cid)
+            char = await uow.av_characters.find_by_id(cid)
+            if char is not None:
+                speakers.append({"id": cid, "name": char.name, "voice_desc": char.voice_desc})
+        return speakers
+
+    async def _generate(self, item: _Item) -> tuple[bytes, str | None]:
         # 先在 uow 内读齐纯数据再关闭会话：上游生成可长达 10 分钟，
         # 期间不得占用数据库连接/事务。
         async with self._uow_factory() as uow:
@@ -238,21 +262,37 @@ class AvGenerationQueue:
                 prompt, refs = await self._build_image_request(uow, shot, item.model)
             elif item.kind == AssetKind.VIDEO:
                 image_bytes = self._storage.read(shot.image_path or "")
-                video_prompt = shot.video_prompt or shot.image_prompt
                 duration = round(shot.duration_estimate)
+                is_dialogue = shot.has_dialogue
+                if is_dialogue:
+                    speakers = await self._collect_speakers(uow, shot.dialogue)
+                    dialogue_prompt = build_dialogue_prompt(
+                        shot.image_prompt, speakers, shot.dialogue
+                    )
+                else:
+                    video_prompt = shot.video_prompt or shot.image_prompt
             else:
                 line_en = shot.line_en
                 voice = item.voice or shot.audio_voice
 
         if item.kind == AssetKind.IMAGE:
-            return await self._client.generate_image(prompt, item.model, refs or None)
+            data = await self._client.generate_image(prompt, item.model, refs or None)
+            return data, None
         if item.kind == AssetKind.VIDEO:
-            return await self._client.generate_video(
+            if is_dialogue:
+                return await self._client.generate_dialogue_video(
+                    image_bytes, dialogue_prompt, duration_seconds=duration
+                )
+            data = await self._client.generate_video(
                 image_bytes, video_prompt, item.model, duration_seconds=duration
             )
-        return await self._client.generate_speech(line_en, item.model, voice)
+            return data, None
+        data = await self._client.generate_speech(line_en, item.model, voice)
+        return data, None
 
-    async def _succeed(self, item: _Item, data: bytes) -> None:
+    async def _succeed(
+        self, item: _Item, data: bytes, model_tag: str | None = None
+    ) -> None:
         rel_path = self._storage.save(
             f"projects/{item.project_id}/shots/{item.shot_id}/{item.kind.value}.{_EXT[item.kind]}",
             data,
@@ -265,6 +305,14 @@ class AvGenerationQueue:
             if shot is None:
                 return
             shot.mark_succeeded(item.kind, rel_path, audio_duration=duration)
+            if model_tag:
+                # 对白镜：路由实际落地的渠道:模型（kie:... / openrouter:...），覆盖入队时的占位模型
+                shot.video_model = model_tag
+                if shot.audio_path:
+                    # 旧迁移镜残留的 TTS 配音已失效：视频现在自带同步语音，
+                    # 不清空的话合成会继续 mux 旧音频、丢弃新视频的口型同步声音
+                    self._storage.delete(shot.audio_path)
+                    shot.retire_audio()
             if item.voice:
                 shot.audio_voice = item.voice
             project = await uow.av_projects.find_by_id(item.project_id)

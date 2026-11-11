@@ -34,6 +34,7 @@ export default function CharacterEditorModal({
   const [name, setName] = useState(character?.name ?? '')
   const [appearance, setAppearance] = useState(character?.appearance_prompt ?? '')
   const [personality, setPersonality] = useState(character?.personality ?? '')
+  const [voiceDesc, setVoiceDesc] = useState(character?.voice_desc ?? '')
   const [modelChoice, setModelChoice] = useState('')
   const [coverId, setCoverId] = useState<number | null>(null)
   const [generating, setGenerating] = useState(false)
@@ -52,6 +53,7 @@ export default function CharacterEditorModal({
       name: name.trim(),
       appearance_prompt: appearance.trim(),
       personality: personality.trim() || undefined,
+      voice_desc: voiceDesc.trim() || undefined,
     })
     if (res.code !== 0 || !res.data) {
       setError(res.message)
@@ -102,6 +104,7 @@ export default function CharacterEditorModal({
       name: name.trim(),
       appearance_prompt: appearance.trim(),
       personality: personality.trim() || undefined,
+      voice_desc: voiceDesc.trim(),
       ...(effectiveCoverId != null ? { cover_image_id: effectiveCoverId } : {}),
     })
     setSaving(false)
@@ -184,6 +187,19 @@ export default function CharacterEditorModal({
               rows={2}
               maxLength={500}
               className={`${inputCls} resize-none leading-relaxed text-sm`}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="char-voice-desc" className="text-[13px] font-semibold text-text-primary">
+              音色描述
+            </label>
+            <input
+              id="char-voice-desc"
+              value={voiceDesc}
+              onChange={(e) => setVoiceDesc(e.target.value)}
+              placeholder="清脆活泼的小男孩声"
+              maxLength={200}
+              className={inputCls}
             />
           </div>
           <ModelSelect label="文生图模型" value={model} options={t2iModels} onChange={setModelChoice} />

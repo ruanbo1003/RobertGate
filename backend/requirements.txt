@@ -13,3 +13,5 @@ greenlet==3.3.2
 langchain==0.3.7
 langchain-openai==0.2.8
 pypdf==6.21.2
+faster-whisper==1.2.1
+numpy==1.26.4

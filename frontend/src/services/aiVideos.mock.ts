@@ -8,6 +8,7 @@ import type {
   Character,
   CharacterPayload,
   CreateProjectPayload,
+  DialogueLine,
   GenerateAllPayload,
   ModelsMap,
   ProjectDetail,
@@ -17,9 +18,18 @@ import type {
   ProjectSummary,
   Script,
   Shot,
+  ShotAsset,
+  ShotAudioAsset,
   ShotPatch,
   StaleItem,
 } from '../types/aiVideos'
+
+/** 按产物类型取对应资产（audio 可能为 null）——统一出入口，避免到处写动态索引。 */
+function assetOf(shot: Shot, kind: AssetKind): ShotAsset | ShotAudioAsset | null {
+  if (kind === 'image') return shot.image
+  if (kind === 'video') return shot.video
+  return shot.audio
+}
 
 const nowIso = () => new Date().toISOString()
 
@@ -64,6 +74,10 @@ const MODELS: ModelsMap = {
       voices: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'],
     },
   ],
+  dialogue_video: [
+    { id: 'kie:gemini-omni-video', name: 'Gemini Omni (kie.ai)', default: true },
+    { id: 'openrouter:bytedance/seedance-2.0-fast', name: 'Seedance 2.0 Fast（兜底）' },
+  ],
 }
 
 const SAMPLE_VIDEO = 'https://www.w3schools.com/html/mov_bbb.mp4'
@@ -85,6 +99,7 @@ const characters: Character[] = [
     appearance_prompt:
       'A cute cartoon fox child, orange fur, big curious eyes, wearing green overalls, children picture book style',
     personality: '好奇心旺盛，喜欢提问，说话节奏快',
+    voice_desc: '清脆活泼的小男孩声',
     cover_image_url: imgUrl('FED7AA', '9A3412', 'Momo', 400, 500),
     candidate_images: [{ id: 11, url: imgUrl('FED7AA', '9A3412', 'Momo', 400, 500) }],
     used_count: 2,
@@ -97,6 +112,7 @@ const characters: Character[] = [
     appearance_prompt:
       'A cute shy cartoon bunny child, white fur, pink dress, children picture book style',
     personality: '害羞，说话慢而清晰',
+    voice_desc: '柔软羞涩的小女孩声',
     cover_image_url: imgUrl('BBF7D0', '14532D', 'Bibi', 400, 500),
     candidate_images: [{ id: 21, url: imgUrl('BBF7D0', '14532D', 'Bibi', 400, 500) }],
     used_count: 0,
@@ -109,6 +125,7 @@ const characters: Character[] = [
     appearance_prompt:
       'A cute clumsy cartoon bear child, brown fur, blue t-shirt, children picture book style',
     personality: '憨厚，Momo 的好朋友',
+    voice_desc: '温暖憨厚的大男孩声',
     cover_image_url: imgUrl('BFDBFE', '1E3A8A', 'Kuku', 400, 500),
     candidate_images: [{ id: 31, url: imgUrl('BFDBFE', '1E3A8A', 'Kuku', 400, 500) }],
     used_count: 2,
@@ -126,32 +143,44 @@ function makeAsset(state: AssetState, model: string, url: string | null = null) 
   return { state, url, model, stale: false, error: null as string | null, version: state === 'success' ? 1 : 0 }
 }
 
+/** 镜像后端 estimate_dialogue_duration：按台词总词数估算时长，clamp 3-10s。 */
+function estimateDialogueDuration(dialogue: DialogueLine[]): number {
+  const words = dialogue.reduce((acc, d) => acc + d.en.split(' ').filter(Boolean).length, 0)
+  return Math.round(Math.min(10, Math.max(3, words * 0.45 + 1.5)) * 10) / 10
+}
+
 function makeShot(
   order: number,
-  speaker: number,
-  en: string,
-  zh: string,
+  dialogue: DialogueLine[],
   prompt: string,
   states: [AssetState, AssetState, AssetState],
 ): Shot {
   const [si, sv, sa] = states
+  const hasDialogue = dialogue.length > 0
+  const refIds = Array.from(
+    new Set(dialogue.map((d) => d.character_id).filter((c): c is number => c != null)),
+  )
   return {
     id: genId(),
     order,
-    duration_estimate: Math.min(6, Math.max(3, en.split(' ').length * 0.45 + 1.5)),
-    speaker_character_id: speaker,
-    ref_character_ids: speaker != null ? [speaker] : [],
-    line_en: en,
-    line_zh: zh,
+    duration_estimate: hasDialogue ? estimateDialogueDuration(dialogue) : 5.0,
+    ref_character_ids: refIds,
     image_prompt: prompt,
     video_prompt: '',
+    dialogue,
     image: makeAsset(si, 'google/gemini-3.1-flash-image', si === 'success' ? imgUrl('BFDBFE', '1E3A8A', `Shot ${order}`) : null),
-    video: makeAsset(sv, 'bytedance/seedance-2.0-fast', sv === 'success' ? SAMPLE_VIDEO : null),
-    audio: {
-      ...makeAsset(sa, 'openai/gpt-audio', sa === 'success' ? SAMPLE_AUDIO : null),
-      voice: 'alloy',
-      duration: sa === 'success' ? Math.round((en.split(' ').length * 0.45 + 1.2) * 10) / 10 : null,
-    },
+    video: makeAsset(
+      sv,
+      hasDialogue ? 'kie:gemini-omni-video' : 'bytedance/seedance-2.0-fast',
+      sv === 'success' ? SAMPLE_VIDEO : null,
+    ),
+    audio: hasDialogue
+      ? null
+      : {
+          ...makeAsset(sa, 'openai/gpt-audio', sa === 'success' ? SAMPLE_AUDIO : null),
+          voice: 'alloy',
+          duration: null,
+        },
   }
 }
 
@@ -162,24 +191,46 @@ const DEFAULT_MODELS = {
   tts: 'openai/gpt-audio',
 }
 
-const ep03Lines: Array<[number, string, string, [AssetState, AssetState, AssetState]]> = [
-  [1, 'Look, Kuku! A supermarket!', '看，Kuku！一家超市！', ['success', 'success', 'success']],
-  [3, "Wow! Let's go inside!", '哇！我们进去吧！', ['success', 'success', 'success']],
-  [1, 'I want to buy apples.', '我想买苹果。', ['success', 'pending', 'pending']],
-  [3, 'Apples are red and sweet!', '苹果是红色的，甜甜的！', ['success', 'failed', 'success']],
-  [1, 'Where are the apples?', '苹果在哪里呢？', ['success', 'success', 'success']],
-  [3, 'Over there! Follow me!', '在那边！跟我来！', ['pending', 'pending', 'pending']],
+// 同场景连续对答合并为一镜（镜像后端 group_script_into_shots）：镜 1 是双人对白镜。
+const ep03Lines: Array<[DialogueLine[], string, [AssetState, AssetState, AssetState]]> = [
+  [
+    [
+      { character_id: 1, en: 'Look, Kuku! A supermarket!', zh: '看，Kuku！一家超市！' },
+      { character_id: 3, en: "Wow! Let's go inside!", zh: '哇！我们进去吧！' },
+    ],
+    'Momo the fox and Kuku the bear standing at a small supermarket entrance, children picture book style, soft lighting, vertical 9:16',
+    ['success', 'success', 'success'],
+  ],
+  [
+    [{ character_id: 1, en: 'I want to buy apples.', zh: '我想买苹果。' }],
+    'Momo the fox pointing at a fruit stand, children picture book style, soft lighting, vertical 9:16',
+    ['success', 'pending', 'pending'],
+  ],
+  [
+    [{ character_id: 3, en: 'Apples are red and sweet!', zh: '苹果是红色的，甜甜的！' }],
+    'Kuku the bear holding a red apple, children picture book style, soft lighting, vertical 9:16',
+    ['success', 'failed', 'success'],
+  ],
+  [
+    [{ character_id: 1, en: 'Where are the apples?', zh: '苹果在哪里呢？' }],
+    'Momo the fox looking around the store, children picture book style, soft lighting, vertical 9:16',
+    ['success', 'success', 'success'],
+  ],
+  [
+    [{ character_id: 3, en: 'Over there! Follow me!', zh: '在那边！跟我来！' }],
+    'Kuku the bear waving and walking ahead, children picture book style, soft lighting, vertical 9:16',
+    ['pending', 'pending', 'pending'],
+  ],
+  // 纯画面镜（无台词）：示范"配音"产物行与空台词态
+  [
+    [],
+    'Wide shot of the supermarket exterior at sunset, quiet establishing shot, children picture book style, vertical 9:16',
+    ['pending', 'pending', 'pending'],
+  ],
 ]
 
-const ep03Shots = ep03Lines.map(([speaker, en, zh, states], i) =>
-  makeShot(
-    i + 1,
-    speaker,
-    en,
-    zh,
-    `${speaker === 1 ? 'Momo the fox' : 'Kuku the bear'} in a small supermarket, ${en.toLowerCase()} children picture book style, soft lighting, vertical 9:16`,
-    states,
-  ),
+const ep03Shots = ep03Lines.map(([dialogue, prompt, states], i) =>
+  makeShot(i + 1, dialogue, prompt, states),
 )
 ep03Shots[3].video.error = 'i2v task timeout (504)'
 ep03Shots[4].image.stale = true
@@ -207,8 +258,18 @@ const projects: MockProject[] = [
     },
     compose: { state: 'success', video_url: SAMPLE_VIDEO, error: null, stale: false },
     shots: [
-      makeShot(1, 1, 'Good morning, sun!', '早上好，太阳！', 'Momo the fox waking up at sunrise, children picture book style', ['success', 'success', 'success']),
-      makeShot(2, 1, 'Time to get up!', '该起床啦！', 'Momo the fox jumping out of bed, children picture book style', ['success', 'success', 'success']),
+      makeShot(
+        1,
+        [{ character_id: 1, en: 'Good morning, sun!', zh: '早上好，太阳！' }],
+        'Momo the fox waking up at sunrise, children picture book style',
+        ['success', 'success', 'success'],
+      ),
+      makeShot(
+        2,
+        [{ character_id: 1, en: 'Time to get up!', zh: '该起床啦！' }],
+        'Momo the fox jumping out of bed, children picture book style',
+        ['success', 'success', 'success'],
+      ),
     ],
     updated_at: nowIso(),
   },
@@ -224,7 +285,9 @@ const projects: MockProject[] = [
       scenes: [
         {
           setting: 'At the supermarket entrance',
-          lines: ep03Lines.map(([speaker, en, zh]) => ({ character_id: speaker, en, zh })),
+          lines: ep03Lines.flatMap(([dialogue]) =>
+            dialogue.map((ln) => ({ ...ln, character_id: ln.character_id as number })),
+          ),
         },
       ],
     },
@@ -256,8 +319,8 @@ function finishTask(task: MockTask) {
   if (idx >= 0) running.splice(idx, 1)
   const shot = findShot(task.projectId, task.shotId)
   const project = projects.find((p) => p.id === task.projectId)
-  if (!shot || !project) return
-  const asset = shot[task.kind]
+  const asset = shot && assetOf(shot, task.kind)
+  if (!shot || !project || !asset) return
   // 约 1/8 概率失败，便于联调失败态
   const failed = Math.random() < 0.125
   if (failed) {
@@ -273,9 +336,9 @@ function finishTask(task: MockTask) {
       asset.url = imgUrl('BFDBFE', '1E3A8A', `Shot ${shot.order} v${asset.version}`)
     } else if (task.kind === 'video') {
       asset.url = SAMPLE_VIDEO
-    } else {
+      if (shot.dialogue.length > 0) asset.model = 'kie:gemini-omni-video'
+    } else if (shot.audio) {
       asset.url = SAMPLE_AUDIO
-      shot.audio.duration = Math.round((shot.line_en.split(' ').length * 0.45 + 1.2) * 10) / 10
     }
     if (project.compose.state === 'success') project.compose.stale = true
   }
@@ -303,11 +366,17 @@ function pump() {
       }
       if (shot.image.state !== 'success') continue // 等待图完成
     }
+    const asset = assetOf(shot, task.kind)
+    if (!asset) {
+      queue.splice(i, 1)
+      i--
+      continue
+    }
     queue.splice(i, 1)
     i--
     running.push(task)
-    shot[task.kind].state = 'running'
-    shot[task.kind].error = null
+    asset.state = 'running'
+    asset.error = null
     setTimeout(() => finishTask(task), 1800 + Math.random() * 2500)
   }
   if (queue.length === 0 && running.length === 0 && pumpTimer) {
@@ -318,8 +387,9 @@ function pump() {
 
 function enqueue(projectId: number, shotId: number, kind: AssetKind) {
   const shot = findShot(projectId, shotId)
-  if (!shot) return
-  shot[kind].state = 'pending'
+  const asset = shot && assetOf(shot, kind)
+  if (!shot || !asset) return
+  asset.state = 'pending'
   queue.push({ projectId, shotId, kind })
   if (!pumpTimer) pumpTimer = setInterval(pump, 500)
 }
@@ -335,7 +405,8 @@ function isBusy(state: AssetState, projectId: number, shotId: number, kind: Asse
 
 function deriveStatus(p: MockProject): ProjectStatus {
   if (p.shots.length === 0) return 'draft'
-  const assets = p.shots.flatMap((s) => [s.image, s.video, s.audio])
+  // audio 不参与聚合：对白镜没有独立音频产物（镜像后端 _AGGREGATE_KINDS）
+  const assets = p.shots.flatMap((s) => [s.image, s.video])
   const queued = queue.some((t) => t.projectId === p.id)
   if (queued || assets.some((a) => a.state === 'running')) return 'generating'
   if (assets.some((a) => a.state === 'failed')) return 'partial_failed'
@@ -355,7 +426,7 @@ function toSummary(p: MockProject): ProjectSummary {
     progress: {
       image: p.shots.filter((s) => s.image.state === 'success').length,
       video: p.shots.filter((s) => s.video.state === 'success').length,
-      audio: p.shots.filter((s) => s.audio.state === 'success').length,
+      audio: p.shots.filter((s) => s.audio?.state === 'success').length,
     },
     updated_at: p.updated_at,
   }
@@ -384,7 +455,8 @@ function staleItems(p: MockProject): StaleItem[] {
   const items: StaleItem[] = []
   for (const s of p.shots) {
     for (const kind of ['image', 'video', 'audio'] as AssetKind[]) {
-      if (s[kind].stale) items.push({ shot_id: s.id, shot_order: s.order, kind })
+      const asset = assetOf(s, kind)
+      if (asset?.stale) items.push({ shot_id: s.id, shot_order: s.order, kind })
     }
   }
   return items
@@ -411,6 +483,7 @@ export function createCharacterMock(
     name: payload.name,
     appearance_prompt: payload.appearance_prompt,
     personality: payload.personality ?? null,
+    voice_desc: payload.voice_desc ?? '',
     cover_image_url: null,
     candidate_images: [],
     used_count: 0,
@@ -433,6 +506,7 @@ export function updateCharacterMock(
   if (payload.name) char.name = payload.name
   if (payload.appearance_prompt !== undefined) char.appearance_prompt = payload.appearance_prompt
   if (payload.personality !== undefined) char.personality = payload.personality
+  if (payload.voice_desc !== undefined) char.voice_desc = payload.voice_desc
   if (payload.cover_image_id !== undefined) {
     const img = char.candidate_images.find((i) => i.id === payload.cover_image_id)
     if (!img) return delay(err(2001, 'cover_image_id 不在候选集内'))
@@ -601,23 +675,37 @@ export function splitShotsMock(
   for (let i = queue.length - 1; i >= 0; i--) {
     if (queue[i].projectId === id) queue.splice(i, 1)
   }
+  // 同场景连续对答合并为一镜（镜像后端 group_script_into_shots）：≤4 句且预估 ≤10s
+  const MAX_LINES = 4
+  const MAX_SECONDS = 10
   const shots: Shot[] = []
   let order = 1
   for (const scene of p.script.scenes) {
-    for (const line of scene.lines) {
-      const char = characters.find((c) => c.id === line.character_id)
+    let group: DialogueLine[] = []
+    const flush = () => {
+      if (group.length === 0) return
+      const speakerNames = group
+        .map((ln) => characters.find((c) => c.id === ln.character_id)?.appearance_prompt)
+        .filter((v): v is string => !!v)
       shots.push(
         makeShot(
           order,
-          line.character_id,
-          line.en,
-          line.zh,
-          `${char?.appearance_prompt ?? 'A cartoon character'}, ${scene.setting}, ${line.en.toLowerCase()} children picture book style, vertical 9:16`,
+          group,
+          `${speakerNames[0] ?? 'A cartoon character'}, ${scene.setting}, children picture book style, vertical 9:16`,
           ['pending', 'pending', 'pending'],
         ),
       )
       order += 1
+      group = []
     }
+    for (const line of scene.lines) {
+      const candidate = [...group, line]
+      if (group.length > 0 && (candidate.length > MAX_LINES || estimateDialogueDuration(candidate) > MAX_SECONDS)) {
+        flush()
+      }
+      group.push(line)
+    }
+    flush()
   }
   p.shots = shots
   p.compose = { state: 'none', video_url: null, error: null, stale: false }
@@ -631,7 +719,7 @@ export function createShotMock(
 ): Promise<ApiResponse<{ shot: Shot } | null>> {
   const p = projects.find((x) => x.id === id)
   if (!p) return delay(err(2007, '项目不存在'))
-  const shot = makeShot(0, p.character_ids[0], '', '', '', ['pending', 'pending', 'pending'])
+  const shot = makeShot(0, [], '', ['pending', 'pending', 'pending'])
   const idx = afterShotId == null ? 0 : p.shots.findIndex((s) => s.id === afterShotId) + 1
   p.shots.splice(idx, 0, shot)
   p.shots.forEach((s, i) => (s.order = i + 1))
@@ -652,18 +740,26 @@ export function updateShotMock(
     (patch.ref_character_ids !== undefined &&
       JSON.stringify(patch.ref_character_ids) !== JSON.stringify(shot.ref_character_ids))
   const motionChanged =
-    patch.video_prompt !== undefined && patch.video_prompt !== shot.video_prompt
-  const lineChanged =
-    (patch.line_en !== undefined && patch.line_en !== shot.line_en) ||
-    (patch.speaker_character_id !== undefined &&
-      patch.speaker_character_id !== shot.speaker_character_id)
+    (patch.video_prompt !== undefined && patch.video_prompt !== shot.video_prompt) ||
+    (patch.dialogue !== undefined && JSON.stringify(patch.dialogue) !== JSON.stringify(shot.dialogue))
   Object.assign(shot, patch)
+  if (patch.dialogue !== undefined) {
+    // audio 是否存在随 dialogue 动态派生（镜像后端 has_dialogue）：
+    // 台词从空变非空 → 退役为 null；从空台词变回空 → 重建可配音产物
+    if (shot.dialogue.length > 0) {
+      shot.audio = null
+      shot.duration_estimate = estimateDialogueDuration(shot.dialogue)
+      if (shot.video.model === 'bytedance/seedance-2.0-fast') shot.video.model = 'kie:gemini-omni-video'
+    } else if (!shot.audio) {
+      shot.audio = { ...makeAsset('pending', 'openai/gpt-audio', null), voice: 'alloy', duration: null }
+      if (shot.video.model === 'kie:gemini-omni-video') shot.video.model = 'bytedance/seedance-2.0-fast'
+    }
+  }
   if (visualChanged) {
     if (shot.image.state === 'success') shot.image.stale = true
     if (shot.video.state === 'success') shot.video.stale = true
   }
   if (motionChanged && shot.video.state === 'success') shot.video.stale = true
-  if (lineChanged && shot.audio.state === 'success') shot.audio.stale = true
   p.updated_at = nowIso()
   return delay(ok({ shot: JSON.parse(JSON.stringify(shot)) }))
 }
@@ -704,15 +800,26 @@ export function generateAssetMock(
   model: string,
   voice?: string,
 ): Promise<ApiResponse<null>> {
+  void voice
   const p = projects.find((x) => x.id === id)
   const shot = p?.shots.find((s) => s.id === shotId)
   if (!p || !shot) return delay(err(2007, '分镜不存在'))
-  if (isBusy(shot[kind].state, id, shotId, kind)) return delay(err(2006, '该产物正在生成中'))
+  if (kind === 'audio') {
+    // 对白镜无独立配音；纯画面镜没有台词可念——新 UI 不再提供 line_en 输入，
+    // 此路径在真实系统里也恒不可达，两种情况都如实返回对应的后端错误码。
+    return delay(
+      shot.dialogue.length > 0
+        ? err(2001, '对白镜无独立配音')
+        : err(2003, '请先填写台词'),
+    )
+  }
+  const asset = assetOf(shot, kind)
+  if (!asset) return delay(err(2007, '产物不存在'))
+  if (isBusy(asset.state, id, shotId, kind)) return delay(err(2006, '该产物正在生成中'))
   if (kind === 'video' && shot.image.state !== 'success') {
     return delay(err(2003, '请先生成分镜图'))
   }
-  shot[kind].model = model
-  if (kind === 'audio' && voice) shot.audio.voice = voice
+  asset.model = model
   enqueue(id, shotId, kind)
   return delay(ok(null))
 }
@@ -726,7 +833,9 @@ export function generateAllMock(
   const enqueued: Record<AssetKind, number> = { image: 0, video: 0, audio: 0 }
   for (const shot of p.shots) {
     for (const kind of payload.types) {
-      const asset = shot[kind]
+      if (kind === 'audio' && shot.dialogue.length > 0) continue // 对白镜不排 audio
+      const asset = assetOf(shot, kind)
+      if (!asset) continue
       if (isBusy(asset.state, id, shot.id, kind)) continue
       const needs =
         payload.scope === 'all' ||
@@ -756,12 +865,10 @@ export function composeMock(
   const p = projects.find((x) => x.id === id)
   if (!p) return delay(err(2007, '项目不存在'))
   if (p.shots.length === 0) return delay(err(2003, '还没有分镜'))
+  // audio 不参与合成预检：对白镜没有独立音频，纯画面镜未配音也不阻塞合成
   const missing = p.shots
-    .flatMap((s) =>
-      (['video', 'audio'] as AssetKind[])
-        .filter((k) => s[k].state !== 'success')
-        .map((k) => ({ shot_id: s.id, shot_order: s.order, kind: k })),
-    )
+    .filter((s) => s.video.state !== 'success')
+    .map((s) => ({ shot_id: s.id, shot_order: s.order, kind: 'video' as AssetKind }))
   if (missing.length > 0) {
     return delay(err(2003, `还有 ${missing.length} 项产物未就绪`, { missing }))
   }
@@ -794,7 +901,7 @@ export function getStatusMock(id: number): Promise<ApiResponse<ProjectStatusResp
     progress: {
       image: { done: p.shots.filter((s) => s.image.state === 'success').length, total: p.shots.length },
       video: { done: p.shots.filter((s) => s.video.state === 'success').length, total: p.shots.length },
-      audio: { done: p.shots.filter((s) => s.audio.state === 'success').length, total: p.shots.length },
+      audio: { done: p.shots.filter((s) => s.audio?.state === 'success').length, total: p.shots.length },
     },
     stale_count: staleItems(p).length,
     compose: { ...p.compose },
@@ -802,14 +909,16 @@ export function getStatusMock(id: number): Promise<ApiResponse<ProjectStatusResp
       id: s.id,
       image: { state: s.image.state, stale: s.image.stale, url: s.image.url, version: s.image.version, error: s.image.error },
       video: { state: s.video.state, stale: s.video.stale, url: s.video.url, version: s.video.version, error: s.video.error },
-      audio: {
-        state: s.audio.state,
-        stale: s.audio.stale,
-        url: s.audio.url,
-        version: s.audio.version,
-        error: s.audio.error,
-        duration: s.audio.duration,
-      },
+      audio: s.audio
+        ? {
+            state: s.audio.state,
+            stale: s.audio.stale,
+            url: s.audio.url,
+            version: s.audio.version,
+            error: s.audio.error,
+            duration: s.audio.duration,
+          }
+        : null,
     })),
   }
   return delay(ok(resp), 120)

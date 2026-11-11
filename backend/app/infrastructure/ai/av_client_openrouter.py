@@ -32,20 +32,24 @@ _VIDEO_POLL_INTERVAL = 5.0
 _VIDEO_POLL_TIMEOUT = 600.0
 
 _SPEECH_SYSTEM = (
-    "You are a text-to-speech engine. Read the user's text aloud verbatim, "
-    "word for word. Do not add, omit, translate or comment on anything."
+    "You are the voice track generator for a children's English learning video. "
+    'The user message has the form: Repeat after me exactly: "...". '
+    "Speak ONLY the quoted line, word for word. Never answer the line, never add "
+    "greetings, questions or anything else. Speak slowly and clearly, warm and "
+    "cheerful, like reading to a 3-year-old child who is learning English."
 )
 
 
+
 async def _pcm16_to_mp3(
-    pcm: bytes, ffmpeg_bin: str = "ffmpeg", sample_rate: int = 24000
+    pcm: bytes, ffmpeg_bin: str = "ffmpeg", tempo: float = 1.0, sample_rate: int = 24000
 ) -> bytes:
-    """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3。"""
-    cmd = [
-        ffmpeg_bin, "-v", "error",
-        "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
-        "-f", "mp3", "pipe:1",
-    ]
+    """ffmpeg 把 OpenAI 流式 pcm16（24kHz 单声道 s16le）转成 mp3；tempo<1 放慢语速。"""
+    cmd = [ffmpeg_bin, "-v", "error",
+           "-f", "s16le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0"]
+    if tempo != 1.0:
+        cmd += ["-filter:a", f"atempo={tempo}"]
+    cmd += ["-f", "mp3", "pipe:1"]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -90,12 +94,14 @@ class OpenRouterAvClient:
         transport: httpx.AsyncBaseTransport | None = None,
         poll_interval: float = _VIDEO_POLL_INTERVAL,
         ffmpeg_bin: str = "ffmpeg",
+        tts_tempo: float = 1.0,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {api_key}"}
         self._transport = transport
         self._poll_interval = poll_interval
         self._ffmpeg_bin = ffmpeg_bin
+        self._tts_tempo = tts_tempo
 
     def _http(self, timeout: float) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -158,7 +164,12 @@ class OpenRouterAvClient:
     # ---------------- i2v ----------------
 
     async def generate_video(
-        self, image: bytes, prompt: str, model: str, duration_seconds: int = 5
+        self,
+        image: bytes,
+        prompt: str,
+        model: str,
+        duration_seconds: int = 5,
+        generate_audio: bool = False,
     ) -> bytes:
         payload = {
             "model": model,
@@ -174,6 +185,8 @@ class OpenRouterAvClient:
             "resolution": "720p",
             "duration": snap_duration(model, duration_seconds),
         }
+        if generate_audio:
+            payload["generate_audio"] = True
         submit = await self._request(
             "POST", f"{self._base}/videos", "图生视频提交", json=payload
         )
@@ -209,8 +222,16 @@ class OpenRouterAvClient:
     # ---------------- tts ----------------
 
     async def generate_speech(self, text: str, model: str, voice: str) -> bytes:
-        # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16：
-        # 流式收 pcm16（24kHz 单声道 s16le），收完 ffmpeg 转 mp3。
+        """TTS：Repeat-after-me 包裹台词 + 慢速童声指令，流式 pcm16 → ffmpeg 转 mp3。
+
+        gpt-audio 是对话模型，偶发把台词当提问去回答；是否重录由用户
+        试听判断（不做自动转写自检，省 token —— Robert 2026-11-06 拍板）。
+        """
+        pcm = await self._speech_once(text, model, voice)
+        return await _pcm16_to_mp3(pcm, self._ffmpeg_bin, tempo=self._tts_tempo)
+
+    async def _speech_once(self, text: str, model: str, voice: str) -> bytes:
+        # OpenRouter 音频输出强制 stream=true，而 OpenAI 流式音频仅支持 pcm16
         payload = {
             "model": model,
             "modalities": ["text", "audio"],
@@ -218,7 +239,7 @@ class OpenRouterAvClient:
             "stream": True,
             "messages": [
                 {"role": "system", "content": _SPEECH_SYSTEM},
-                {"role": "user", "content": text},
+                {"role": "user", "content": f'Repeat after me exactly: "{text}"'},
             ],
         }
         chunks: list[bytes] = []
@@ -252,7 +273,7 @@ class OpenRouterAvClient:
             raise ServerException(codes.AV_UPSTREAM_FAILED, f"TTS 网络错误：{e}") from e
         if not chunks:
             raise ServerException(codes.AV_UPSTREAM_FAILED, "TTS 响应不含音频数据")
-        return await _pcm16_to_mp3(b"".join(chunks), self._ffmpeg_bin)
+        return b"".join(chunks)
 
     # ---------------- llm ----------------
 

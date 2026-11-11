@@ -61,8 +61,9 @@ def make_store():
     for i in range(1, 7):
         s = AvShot.create(
             project_id=1, order_index=i,
-            speaker_character_id=10, ref_character_ids=[10],
-            line_en=f"Line {i}!", line_zh="", image_prompt=f"prompt {i}",
+            ref_character_ids=[10],
+            dialogue=[{"character_id": 10, "en": f"Line {i}!", "zh": ""}],
+            image_prompt=f"prompt {i}",
             models=DEFAULT_MODELS, tts_voice="alex",
         )
         s.id = i
@@ -123,6 +124,10 @@ class FakeClient:
     async def generate_json(self, system, user, model):
         return {}
 
+    async def generate_dialogue_video(self, image, prompt, duration_seconds):
+        data = await self._work("video_dialogue", prompt, duration_seconds)
+        return data, "kie:gemini-omni-video"
+
 
 class FakeStorage:
     def __init__(self):
@@ -140,6 +145,10 @@ class FakeStorage:
         if rel_path in self.saved:
             return self.saved[rel_path]
         return self.files[rel_path]
+
+    def delete(self, rel_path: str) -> None:
+        self.saved.pop(rel_path, None)
+        self.files.pop(rel_path, None)
 
     async def probe_duration(self, rel_path: str) -> float | None:
         return 3.3
@@ -201,6 +210,8 @@ async def test_image_multi_mode_sends_all_covers_in_order(queue, store, client):
     assert ref == [b"cover-bytes", b"cover2-bytes"]
     assert "Momo is the character in reference image 1" in prompt
     assert "Kuku is the character in reference image 2" in prompt
+    # 参考图是多视角设定图：必须声明只取外形、不得复刻 sheet 版式
+    assert "do not copy the character-sheet layout" in prompt
     assert prompt.endswith("prompt 1")
 
 
@@ -258,7 +269,8 @@ async def test_video_waits_for_image_then_succeeds(queue, store, client):
     shot = store["shots"][1]
     assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
     kinds = [c[0] for c in client.calls]
-    assert kinds.index("image") < kinds.index("video")
+    # 默认分镜带 dialogue（make_store），video 走对白镜（音视同出）路径
+    assert kinds.index("image") < kinds.index("video_dialogue")
 
 
 async def test_video_fails_when_image_failed(queue, store, client):
@@ -273,6 +285,8 @@ async def test_video_fails_when_image_failed(queue, store, client):
 
 
 async def test_audio_success_records_duration_and_voice(queue, store, client):
+    # 旧链路桥接：TTS 只剩未迁移旧镜在用，文本仍读 line_en（T6 起对白镜禁走 audio）
+    store["shots"][2].line_en = "Line 2!"
     queue.enqueue(1, 2, AssetKind.AUDIO, "tts-m", voice="bella")
     await drain(queue)
     shot = store["shots"][2]
@@ -336,6 +350,7 @@ async def test_counts_reports_project_queue(queue, store, client):
 
 async def test_video_uses_video_prompt_and_duration(queue, store, client, storage):
     shot = store["shots"][1]
+    shot.dialogue = []  # 纯画面镜：走旧 i2v 路径
     shot.video_prompt = "waves at camera, slow push-in"
     shot.mark_running(AssetKind.IMAGE)
     shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
@@ -349,6 +364,7 @@ async def test_video_uses_video_prompt_and_duration(queue, store, client, storag
 
 async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     shot = store["shots"][1]
+    shot.dialogue = []  # 纯画面镜：走旧 i2v 路径
     shot.mark_running(AssetKind.IMAGE)
     shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
     storage.saved["projects/1/shots/1/image.png"] = b"img"
@@ -356,6 +372,57 @@ async def test_video_falls_back_to_image_prompt(queue, store, client, storage):
     await drain(queue)
     call = next(c for c in client.calls if c[0] == "video")
     assert call[1] == "prompt 1"
+
+
+async def test_legacy_shot_dialogue_video_success_clears_old_audio(queue, store, storage):
+    # 终审发现：旧迁移镜（dialogue 非空但磁盘留有 audio.mp3）重新生成对白镜
+    # video 成功后，若不清空 audio_path，合成时仍会 mux 旧 TTS——丢弃新视频
+    # 自带的同步语音。
+    shot = store["shots"][1]
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    # 模拟旧迁移残留的物理音频文件
+    shot.mark_running(AssetKind.AUDIO)
+    shot.mark_succeeded(AssetKind.AUDIO, path="projects/1/shots/1/audio.mp3", audio_duration=3.0)
+    storage.saved["projects/1/shots/1/audio.mp3"] = b"old-tts-audio"
+    assert shot.audio_path == "projects/1/shots/1/audio.mp3"
+
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+
+    assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
+    assert shot.audio_path is None
+    assert shot.asset_state(AssetKind.AUDIO) == AssetState.PENDING
+    assert "projects/1/shots/1/audio.mp3" not in storage.saved
+
+
+async def test_dialogue_shot_video_success_records_used_model_tag(queue, store, storage):
+    shot = store["shots"][1]  # dialogue 非空（make_store 默认）
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    assert shot.asset_state(AssetKind.VIDEO) == AssetState.SUCCESS
+    assert shot.video_model == "kie:gemini-omni-video"
+
+
+async def test_dialogue_shot_video_prompt_includes_speaker_name_and_voice(
+    queue, store, client, storage
+):
+    shot = store["shots"][1]
+    shot.dialogue = [{"character_id": 10, "en": "Hello Lily!", "zh": ""}]
+    store["characters"][10].voice_desc = "warm friendly"
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="projects/1/shots/1/image.png")
+    storage.saved["projects/1/shots/1/image.png"] = b"img"
+    queue.enqueue(1, 1, AssetKind.VIDEO, "i2v-m")
+    await drain(queue)
+    call = next(c for c in client.calls if c[0] == "video_dialogue")
+    prompt = call[1]
+    assert "Momo has a warm friendly voice" in prompt
+    assert 'Momo says: "Hello Lily!"' in prompt
 
 
 async def test_upstream_call_happens_outside_uow(store, client, storage):

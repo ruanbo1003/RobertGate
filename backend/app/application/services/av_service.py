@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -24,8 +25,15 @@ from app.application.dto.ai_video import (
     ShotStatusOut,
     file_url,
 )
-from app.application.ports import AvGenClient, ComposeItem, TaskRunner, VideoComposer
+from app.application.ports import (
+    AudioWordAligner,
+    AvGenClient,
+    ComposeItem,
+    TaskRunner,
+    VideoComposer,
+)
 from app.application.services.av_queue import AvGenerationQueue, AvStorage
+from app.application.services.av_subtitle import align_dialogue
 from app.domain.errors import ParamException, codes, ensure_found
 from app.domain.models.ai_video import (
     AssetKind,
@@ -67,11 +75,14 @@ _SCRIPT_SYSTEM = (
     "2. 只输出 JSON，结构固定为 "
     '{"scenes": [{"setting": "<英文场景描述>", '
     '"lines": [{"character_id": <int>, "en": "<英文台词>", "zh": "<中文释义>", '
+    '"image_prompt": "<英文：该镜静态画面描述——场景/构图/光线/角色姿态>", '
     '"video_prompt": "<英文：说话角色的动作 + 运镜(static/push-in/pull-back/pan 等) + 氛围>", '
     '"characters": ["<该镜画面中出场的角色名，取自给定角色列表>"]}]}]}。\n'
     "3. character_id 必须取自给定角色列表；characters 里的名字必须与角色列表的 name 完全一致。\n"
-    "4. video_prompt 只描述画面动态，不要复述台词内容。\n"
-    "5. 不要 markdown、不要解释、不要额外字段。"
+    "4. image_prompt 只写场景与构图，不要写角色的外形细节（毛色、五官等），"
+    "更不要出现 character sheet / multiple views / 多视角排版类指令；单一连贯场景。\n"
+    "5. video_prompt 只描述画面动态，不要复述台词内容。\n"
+    "6. 不要 markdown、不要解释、不要额外字段。"
 )
 
 
@@ -96,9 +107,13 @@ class AvCharacterService:
         return {"characters": out}
 
     async def create_character(
-        self, name: str, appearance_prompt: str, personality: str | None
+        self,
+        name: str,
+        appearance_prompt: str,
+        personality: str | None,
+        voice_desc: str | None = None,
     ) -> dict:
-        char = AvCharacter.create(name, appearance_prompt, personality)
+        char = AvCharacter.create(name, appearance_prompt, personality, voice_desc)
         if await self._uow.av_characters.find_by_name(char.name) is not None:
             raise ParamException(codes.AV_PARAM_INVALID, "角色名称已存在")
         self._uow.av_characters.add(char)
@@ -113,6 +128,7 @@ class AvCharacterService:
         appearance_prompt: str | None,
         personality: str | None,
         cover_image_id: int | None,
+        voice_desc: str | None = None,
     ) -> dict:
         char = ensure_found(
             await self._uow.av_characters.find_by_id(character_id),
@@ -122,7 +138,7 @@ class AvCharacterService:
         if name is not None and name.strip() != char.name:
             if await self._uow.av_characters.find_by_name(name.strip()) is not None:
                 raise ParamException(codes.AV_PARAM_INVALID, "角色名称已存在")
-        char.apply_update(name, appearance_prompt, personality)
+        char.apply_update(name, appearance_prompt, personality, voice_desc)
         if cover_image_id is not None:
             image = await self._uow.av_character_images.find_by_id(cover_image_id)
             if image is None or image.character_id != char.id:
@@ -200,6 +216,7 @@ class AvProjectService:
         uow_factory,
         model_defaults: dict[str, str] | None = None,
         voice_default: str = _FALLBACK_VOICE,
+        whisper: AudioWordAligner | None = None,
     ) -> None:
         self._uow = uow
         self._client = client
@@ -210,6 +227,7 @@ class AvProjectService:
         self._uow_factory = uow_factory
         self._model_defaults = model_defaults or dict(_FALLBACK_MODELS)
         self._voice_default = voice_default
+        self._whisper = whisper
 
     # ---------------- 内部取数 ----------------
 
@@ -390,19 +408,11 @@ class AvProjectService:
         self._queue.cancel_project(project_id)
         await self._uow.av_shots.delete_by_project(project_id)
 
-        appearances: dict[int, str | None] = {}
-        for scene in project.script["scenes"]:
-            for line in scene["lines"]:
-                cid = line["character_id"]
-                if cid not in appearances:
-                    char = await self._uow.av_characters.find_by_id(cid)
-                    appearances[cid] = char.appearance_prompt if char else None
         refs = await self._character_refs(project_id)
         name_to_id = {r.name.strip().lower(): r.id for r in refs}
         shots = shots_from_script(
             project_id=project_id,
             script=project.script,
-            appearance_of=lambda cid: appearances.get(cid),
             models=dict(project.default_models),
             tts_voice=project.tts_voice,
             resolve_character=lambda name: name_to_id.get(name.strip().lower()),
@@ -430,10 +440,8 @@ class AvProjectService:
         shot = AvShot.create(
             project_id=project_id,
             order_index=insert_at + 1,
-            speaker_character_id=None,
             ref_character_ids=[],
-            line_en="",
-            line_zh="",
+            dialogue=[],
             image_prompt="",
             models=dict(project.default_models),
             tts_voice=project.tts_voice,
@@ -511,6 +519,8 @@ class AvProjectService:
             raise ParamException(codes.AV_ASSET_BUSY, "该产物正在生成中")
         if kind == AssetKind.VIDEO and shot.asset_state(AssetKind.IMAGE) != AssetState.SUCCESS:
             raise ParamException(codes.AV_PRECONDITION_FAILED, "请先生成分镜图")
+        if kind == AssetKind.AUDIO and shot.has_dialogue:
+            raise ParamException(codes.AV_PARAM_INVALID, "对白镜无独立配音")
         if kind == AssetKind.AUDIO and not shot.line_en.strip():
             raise ParamException(codes.AV_PRECONDITION_FAILED, "请先填写台词")
         effective_model = model or project.default_models[self._KIND_MODEL_KEY[kind]]
@@ -540,7 +550,7 @@ class AvProjectService:
                 )
                 if not needs:
                     continue
-                if kind == AssetKind.AUDIO and not shot.line_en.strip():
+                if kind == AssetKind.AUDIO and (shot.has_dialogue or not shot.line_en.strip()):
                     continue
                 model = project.default_models[self._KIND_MODEL_KEY[kind]]
                 voice = project.tts_voice if kind == AssetKind.AUDIO else None
@@ -576,22 +586,58 @@ class AvProjectService:
                 f"存在 {len(stale)} 项过期产物",
                 data={"stale_items": stale},
             )
-        items = [
-            ComposeItem(
-                video=self._storage.absolute(s.video_path or ""),
-                audio=self._storage.absolute(s.audio_path or ""),
-                line_en=s.line_en,
-            )
-            for s in sorted(shots, key=lambda x: x.order_index)
-        ]
+        ordered = sorted(shots, key=lambda x: x.order_index)
         project.mark_compose_running()
         await self._uow.commit()
-        self._runner.spawn(self._run_compose(project_id, items))
+        self._runner.spawn(self._run_compose(project_id, ordered))
 
-    async def _run_compose(self, project_id: int, items: list[ComposeItem]) -> None:
+    async def _build_compose_items(self, shots: list[AvShot]) -> list[ComposeItem]:
+        """组装合成输入：镜有独立音频文件 → mux；否则（对白镜）用视频自带音轨 +
+        whisper 词级对齐字幕。whisper 调用耗时，必须在后台协程里做（不占请求事务）。
+        """
+        items: list[ComposeItem] = []
+        for s in shots:
+            video = self._storage.absolute(s.video_path or "")
+            audio = self._storage.absolute(s.audio_path) if s.audio_path else None
+            video_dur = await self._composer.probe_duration(video) or s.duration_estimate
+            if audio is not None:
+                audio_dur = await self._composer.probe_duration(audio) or video_dur
+                duration = max(video_dur, audio_dur)
+            else:
+                duration = video_dur
+            if s.has_dialogue and audio is None:
+                # 对齐 key 必须是纯英文（whisper 只能匹配口语文本）；显示文本
+                # 可以是 en\nzh 双行——两者分开，对齐完再把时间戳贴回显示文本，
+                # 否则中文字符被当 token 计入总数，匹配率结构性地必然 <50%。
+                spoken = [ln["en"] for ln in s.dialogue]
+                display = [
+                    (f"{ln['en']}\n{ln['zh']}" if ln["zh"] else ln["en"])
+                    for ln in s.dialogue
+                ]
+                try:
+                    words = (
+                        await asyncio.to_thread(self._whisper.transcribe_words, video)
+                        if self._whisper
+                        else []
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning("whisper 转写失败，回退按台词长度均分镜时长", exc_info=True)
+                    words = []
+                aligned = align_dialogue(spoken, words, duration)
+                subtitles = [
+                    (text, start, end) for text, (_, start, end) in zip(display, aligned)
+                ]
+            else:
+                text = s.line_en or (s.dialogue[0]["en"] if s.dialogue else "")
+                subtitles = [(text, 0.0, duration)]
+            items.append(ComposeItem(video=video, audio=audio, subtitles=subtitles))
+        return items
+
+    async def _run_compose(self, project_id: int, shots: list[AvShot]) -> None:
         rel_out = f"projects/{project_id}/final.mp4"
         error: str | None = None
         try:
+            items = await self._build_compose_items(shots)
             await self._composer.compose(items, self._storage.absolute(rel_out))
         except Exception as e:  # noqa: BLE001
             logger.exception("compose failed for project=%s", project_id)

@@ -46,7 +46,7 @@ router = APIRouter(prefix="/ai-videos", tags=["ai-videos"])
 
 @router.get("/models")
 async def list_models(
-    type: str | None = Query(default=None, pattern="^(llm|t2i|i2v|tts)$"),
+    type: str | None = Query(default=None, pattern="^(llm|t2i|i2v|tts|dialogue_video)$"),
     _user_id: str = Depends(get_current_user_id),
 ):
     models = {type: AV_MODELS[type]} if type else AV_MODELS
@@ -71,7 +71,9 @@ async def create_character(
     _user_id: str = Depends(get_current_user_id),
 ):
     return success(
-        await service.create_character(body.name, body.appearance_prompt, body.personality)
+        await service.create_character(
+            body.name, body.appearance_prompt, body.personality, body.voice_desc
+        )
     )
 
 
@@ -89,6 +91,7 @@ async def update_character(
             appearance_prompt=body.appearance_prompt,
             personality=body.personality,
             cover_image_id=body.cover_image_id,
+            voice_desc=body.voice_desc,
         )
     )
 

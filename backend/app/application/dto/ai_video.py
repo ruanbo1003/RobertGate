@@ -36,6 +36,7 @@ class CharacterOut(DTO):
     name: str
     appearance_prompt: str
     personality: str | None
+    voice_desc: str
     cover_image_url: str | None
     candidate_images: list[CandidateImageOut]
     used_count: int
@@ -55,6 +56,7 @@ class CharacterOut(DTO):
             name=char.name,
             appearance_prompt=char.appearance_prompt,
             personality=char.personality,
+            voice_desc=char.voice_desc,
             cover_image_url=file_url(cover.path) if cover else None,
             candidate_images=[CandidateImageOut.build(i) for i in images],
             used_count=used_count,
@@ -88,6 +90,12 @@ class AudioAssetOut(AssetOut):
     duration: float | None
 
 
+class DialogueLineOut(DTO):
+    character_id: int | None
+    en: str
+    zh: str
+
+
 def _asset_out(shot: AvShot, kind: AssetKind) -> AssetOut:
     return AssetOut(
         state=shot.asset_state(kind).value,
@@ -103,34 +111,33 @@ class ShotOut(DTO):
     id: int | None
     order: int
     duration_estimate: float
-    speaker_character_id: int | None
     ref_character_ids: list[int]
     video_prompt: str
-    line_en: str
-    line_zh: str
     image_prompt: str
+    dialogue: list[DialogueLineOut]
     image: AssetOut
     video: AssetOut
-    audio: AudioAssetOut
+    audio: AudioAssetOut | None
 
     @classmethod
     def build(cls, shot: AvShot) -> ShotOut:
-        base = _asset_out(shot, AssetKind.AUDIO)
+        audio_out: AudioAssetOut | None = None
+        if not shot.has_dialogue:
+            base = _asset_out(shot, AssetKind.AUDIO)
+            audio_out = AudioAssetOut(
+                **base.model_dump(), voice=shot.audio_voice, duration=shot.audio_duration
+            )
         return cls(
             id=shot.id,
             order=shot.order_index,
             duration_estimate=shot.duration_estimate,
-            speaker_character_id=shot.speaker_character_id,
             ref_character_ids=list(shot.ref_character_ids),
             video_prompt=shot.video_prompt,
-            line_en=shot.line_en,
-            line_zh=shot.line_zh,
             image_prompt=shot.image_prompt,
+            dialogue=[DialogueLineOut(**ln) for ln in shot.dialogue],
             image=_asset_out(shot, AssetKind.IMAGE),
             video=_asset_out(shot, AssetKind.VIDEO),
-            audio=AudioAssetOut(
-                **base.model_dump(), voice=shot.audio_voice, duration=shot.audio_duration
-            ),
+            audio=audio_out,
         )
 
 
@@ -219,7 +226,7 @@ class ShotStatusOut(DTO):
     id: int
     image: AssetStatusLiteOut
     video: AssetStatusLiteOut
-    audio: AssetStatusLiteOut
+    audio: AssetStatusLiteOut | None
 
     @classmethod
     def build(cls, shot: AvShot) -> ShotStatusOut:
@@ -237,7 +244,7 @@ class ShotStatusOut(DTO):
             id=shot.id,
             image=lite(AssetKind.IMAGE),
             video=lite(AssetKind.VIDEO),
-            audio=lite(AssetKind.AUDIO, shot.audio_duration),
+            audio=None if shot.has_dialogue else lite(AssetKind.AUDIO, shot.audio_duration),
         )
 
 

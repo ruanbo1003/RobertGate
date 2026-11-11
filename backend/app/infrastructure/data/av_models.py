@@ -68,6 +68,15 @@ AV_MODELS: dict[str, list[dict]] = {
             "voices": ["alloy", "echo", "fable", "onyx", "nova", "shimmer"],
         },
     ],
+    # 对白镜（音视同出）：唯一跨渠道段，仅展示用——路由固定为 kie 主+OpenRouter 兜底
+    # （见 av_dialogue_router.py），id 即 shot.video_model 落库的渠道:模型 tag。
+    "dialogue_video": [
+        {"id": "kie:gemini-omni-video", "name": "Gemini Omni (kie.ai)", "default": True},
+        {
+            "id": "openrouter:bytedance/seedance-2.0-fast",
+            "name": "Seedance 2.0 Fast（兜底）",
+        },
+    ],
 }
 
 

@@ -110,7 +110,8 @@ export default function WorkbenchPage() {
               ...shot,
               image: { ...shot.image, ...s.image },
               video: { ...shot.video, ...s.video },
-              audio: { ...shot.audio, ...s.audio },
+              // 对白镜 audio 恒为 null（has_dialogue 不随轮询变化），本地已 null 就不用服务端片段重建
+              audio: shot.audio ? (s.audio ? { ...shot.audio, ...s.audio } : shot.audio) : null,
             }
           }),
         }

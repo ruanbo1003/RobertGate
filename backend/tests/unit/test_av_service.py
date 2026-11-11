@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.application.dto.ai_video import CharacterOut, ShotOut
 from app.application.services.av_service import AvCharacterService, AvProjectService
 from app.domain.errors import ParamException, codes
 from app.domain.models.ai_video import (
@@ -49,10 +50,8 @@ def _shot(id_: int = 1, order: int = 1, project_id: int = 1) -> AvShot:
     s = AvShot.create(
         project_id=project_id,
         order_index=order,
-        speaker_character_id=1,
         ref_character_ids=[1],
-        line_en=f"Line {order}!",
-        line_zh="",
+        dialogue=[{"character_id": 1, "en": f"Line {order}!", "zh": ""}],
         image_prompt=f"prompt {order}",
         models=DEFAULT_MODELS,
         tts_voice="alex",
@@ -144,6 +143,7 @@ def char_service(uow, client, storage):
 def composer():
     c = AsyncMock()
     c.compose = AsyncMock()
+    c.probe_duration = AsyncMock(return_value=None)  # 回退 shot.duration_estimate
     return c
 
 
@@ -162,6 +162,36 @@ def project_service(uow, client, queue, storage, composer, runner):
         runner=runner,
         uow_factory=uow_factory,
     )
+
+
+# ---------------- API 契约（DTO） ----------------
+
+
+class TestShotOutContract:
+    def test_dialogue_shot_has_no_audio_block_and_correct_dialogue_length(self):
+        shot = _shot()  # dialogue 非空（_shot 默认单句）
+        out = ShotOut.build(shot)
+        assert out.audio is None
+        assert len(out.dialogue) == 1
+        assert out.dialogue[0].en == "Line 1!"
+
+    def test_plain_shot_without_dialogue_has_audio_block(self):
+        shot = AvShot.create(
+            project_id=1, order_index=1, ref_character_ids=[],
+            dialogue=[], image_prompt="p", models=DEFAULT_MODELS, tts_voice="alex",
+        )
+        out = ShotOut.build(shot)
+        assert out.audio is not None
+        assert out.dialogue == []
+
+
+class TestCharacterOutContract:
+    def test_voice_desc_surfaces_in_character_out(self):
+        char = _character()
+        char.apply_update(name=None, appearance_prompt=None, personality=None,
+                           voice_desc="warm friendly")
+        out = CharacterOut.build(char, [], used_count=0)
+        assert out.voice_desc == "warm friendly"
 
 
 # ---------------- 角色 ----------------
@@ -255,6 +285,40 @@ async def test_split_shots_with_confirm_replaces_and_cancels_queue(
     uow.av_shots.delete_by_project.assert_awaited_once_with(1)
 
 
+async def test_split_shots_merges_consecutive_lines_into_one_dialogue_shot(
+    project_service, uow
+):
+    project = _project()
+    project.script = {
+        "scenes": [
+            {
+                "setting": "park",
+                "lines": [
+                    {"character_id": 1, "en": "Hello Lily", "zh": ""},
+                    {"character_id": 2, "en": "Hi Max", "zh": ""},
+                ],
+            }
+        ]
+    }
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.list_by_project = AsyncMock(return_value=[])
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    shots = await project_service.split_shots(1, model=None, confirm_replace=False)
+    assert len(shots) == 1
+    added_shots = [c.args[0] for c in uow.av_shots.add.call_args_list]
+    assert [ln["en"] for ln in added_shots[0].dialogue] == ["Hello Lily", "Hi Max"]
+
+
+async def test_create_shot_builds_blank_shot_without_dialogue(project_service, uow):
+    project = _project()
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.list_by_project = AsyncMock(return_value=[])
+    await project_service.create_shot(1, after_shot_id=None)
+    added_shot = uow.av_shots.add.call_args[0][0]
+    assert added_shot.dialogue == []
+    assert added_shot.ref_character_ids == []
+
+
 async def test_generate_video_requires_image_success(project_service, uow):
     shot = _shot()
     uow.av_projects.find_by_id = AsyncMock(return_value=_project())
@@ -294,6 +358,35 @@ async def test_generate_all_missing_scope_skips_fresh_success(project_service, u
     assert enqueued["image"] == 1  # 只有 s2
 
 
+async def test_generate_asset_audio_rejected_for_dialogue_shot(project_service, uow):
+    shot = _shot()  # _shot() 自带 dialogue 非空
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    with pytest.raises(ParamException) as e:
+        await project_service.generate_asset(1, 1, AssetKind.AUDIO, model=None, voice=None)
+    assert e.value.code == codes.AV_PARAM_INVALID
+
+
+async def test_generate_all_skips_audio_for_dialogue_shots(project_service, uow, queue):
+    shot = _shot()  # has_dialogue
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    enqueued = await project_service.generate_all(1, types=[AssetKind.AUDIO], scope="all")
+    assert enqueued["audio"] == 0
+
+
+async def test_generate_all_skips_audio_for_legacy_migrated_dialogue_shot(
+    project_service, uow, queue
+):
+    # 0010 迁移回填：旧字段 line_en 留存未清空，但 dialogue 已非空——必须按 dialogue 判定
+    shot = _shot()
+    shot.line_en = "Old leftover line"
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    enqueued = await project_service.generate_all(1, types=[AssetKind.AUDIO], scope="all")
+    assert enqueued["audio"] == 0
+
+
 # ---------------- 合成 ----------------
 
 
@@ -312,18 +405,19 @@ async def test_compose_rejects_missing_assets(project_service, uow):
     with pytest.raises(ParamException) as e:
         await project_service.compose(1, ignore_stale=False)
     assert e.value.code == codes.AV_PRECONDITION_FAILED
-    assert len(e.value.data["missing"]) == 2
+    # audio 产物不再参与合成预检，只缺 video
+    assert [m["kind"] for m in e.value.data["missing"]] == ["video"]
 
 
 async def test_compose_requires_stale_confirm(project_service, uow):
     shot = _ready_shot(1, 1)
-    shot.apply_patch(line_en="changed")  # audio stale
+    shot.apply_patch(dialogue=[{"character_id": 1, "en": "changed", "zh": ""}])  # video stale
     uow.av_projects.find_by_id = AsyncMock(return_value=_project())
     uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
     with pytest.raises(ParamException) as e:
         await project_service.compose(1, ignore_stale=False)
     assert e.value.code == codes.AV_STALE_CONFIRM_REQUIRED
-    assert e.value.data["stale_items"][0]["kind"] == "audio"
+    assert e.value.data["stale_items"][0]["kind"] == "video"
 
 
 async def test_compose_spawns_background_task_after_commit(
@@ -341,7 +435,112 @@ async def test_compose_spawns_background_task_after_commit(
     await runner.coros[0]
     composer.compose.assert_awaited_once()
     assert project.compose_state == ComposeState.SUCCESS
-    assert project.compose_path == "projects/1/final.mp4"
+
+
+class FakeWhisperAligner:
+    def __init__(self, words: list[tuple[str, float, float]]):
+        self.words = words
+        self.calls: list = []
+
+    def transcribe_words(self, media):
+        self.calls.append(media)
+        return self.words
+
+
+async def _dialogue_ready_shot(id_: int, order: int) -> AvShot:
+    s = _shot(id_, order)  # dialogue=[{"character_id":1,"en":f"Line {order}!","zh":""}]
+    s.mark_running(AssetKind.IMAGE)
+    s.mark_succeeded(AssetKind.IMAGE, path=f"projects/1/shots/{id_}/image")
+    s.mark_running(AssetKind.VIDEO)
+    s.mark_succeeded(AssetKind.VIDEO, path=f"projects/1/shots/{id_}/video")
+    return s  # audio_path 留空：有声对白镜，走 whisper 对齐
+
+
+async def test_compose_dialogue_shot_without_audio_uses_whisper_alignment(
+    project_service, uow, runner, composer
+):
+    shot = await _dialogue_ready_shot(1, 1)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    whisper = FakeWhisperAligner([("Line", 0.0, 1.0), ("1!", 1.0, shot.duration_estimate)])
+    project_service._whisper = whisper
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    composer.compose.assert_awaited_once()
+    items = composer.compose.call_args[0][0]
+    assert len(items) == 1
+    assert items[0].audio is None
+    assert whisper.calls == [items[0].video]
+    assert items[0].subtitles == [("Line 1!", 0.0, shot.duration_estimate)]
+
+
+async def test_compose_aligns_on_english_text_even_when_zh_present(
+    project_service, uow, runner, composer
+):
+    # 终审发现：对齐 key 曾经用 "en\nzh" 整句，中文字符被当 token 计入总数，
+    # whisper 只能匹配英文词，匹配率结构性地必然 <50% → 永远回退均分。
+    # 用两句话区分"真实对齐"与"均分"：均分会把中点切在 total/2，真实对齐
+    # 会切在词时间戳的实际边界上——两者在本用例下数值不同，足以证伪回退。
+    shot = _shot()
+    shot.dialogue = [
+        {"character_id": 1, "en": "Hello Lily!", "zh": "你好，莉莉！"},
+        {"character_id": 2, "en": "Hi Max, how are you?", "zh": "嗨，麦克斯，你好吗？"},
+    ]
+    shot.duration_estimate = 10.0
+    shot.mark_running(AssetKind.IMAGE)
+    shot.mark_succeeded(AssetKind.IMAGE, path="p/i")
+    shot.mark_running(AssetKind.VIDEO)
+    shot.mark_succeeded(AssetKind.VIDEO, path="p/v")
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    whisper = FakeWhisperAligner([
+        ("Hello", 0.0, 0.5), ("Lily", 0.5, 1.0),
+        ("Hi", 1.2, 1.5), ("Max", 1.5, 1.8), ("how", 1.8, 2.0), ("are", 2.0, 2.2), ("you", 2.2, 2.5),
+    ])
+    project_service._whisper = whisper
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    items = composer.compose.call_args[0][0]
+    subs = items[0].subtitles
+    assert subs[0] == ("Hello Lily!\n你好，莉莉！", 0.0, 1.0)
+    # 第二句开始于词时间戳 1.2（真实对齐），均分会是 5.0——数值上可区分
+    assert subs[1][0] == "Hi Max, how are you?\n嗨，麦克斯，你好吗？"
+    assert subs[1][1] == 1.2
+    assert subs[1][2] == 10.0  # 末句延伸到镜尾
+
+
+class _ExplodingWhisperAligner:
+    def transcribe_words(self, media):
+        raise RuntimeError("ffmpeg 解码失败（模拟 whisper 执行层异常）")
+
+
+async def test_compose_whisper_exception_falls_back_instead_of_failing_compose(
+    project_service, uow, runner, composer
+):
+    # 终审发现：whisper 异常此前会冒泡炸掉整次合成；回退应让合成照常成功。
+    shot = await _dialogue_ready_shot(1, 1)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[shot])
+    project_service._whisper = _ExplodingWhisperAligner()
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    composer.compose.assert_awaited_once()
+    items = composer.compose.call_args[0][0]
+    assert len(items[0].subtitles) == 1  # 回退均分，字幕不缺席
+
+
+async def test_compose_mixed_mux_and_dialogue_shots(project_service, uow, runner, composer):
+    mux_shot = _ready_shot(1, 1)  # _ready_shot 生成全部产物，含物理 audio 文件
+    dialogue_shot = await _dialogue_ready_shot(2, 2)
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.list_by_project = AsyncMock(return_value=[mux_shot, dialogue_shot])
+    project_service._whisper = FakeWhisperAligner([])  # 空词 → 对白镜回退均分
+    await project_service.compose(1, ignore_stale=True)
+    await runner.coros[0]
+    items = composer.compose.call_args[0][0]
+    assert len(items) == 2
+    assert items[0].audio is not None  # mux 镜
+    assert items[1].audio is None  # 对白镜
 
 
 # ---------------- Task 5: video_prompt / 出场角色 ----------------
@@ -350,6 +549,7 @@ async def test_compose_spawns_background_task_after_commit(
 def test_script_system_requires_video_prompt_and_characters():
     from app.application.services.av_service import _SCRIPT_SYSTEM
 
+    assert '"image_prompt"' in _SCRIPT_SYSTEM
     assert '"video_prompt"' in _SCRIPT_SYSTEM
     assert '"characters"' in _SCRIPT_SYSTEM
 
