@@ -42,7 +42,7 @@
   "code": 0,
   "data": {
     "models": {
-      "llm":  [ { "id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash", "default": true } ],
+      "llm":  [ { "id": "gemini-4-carbon-openai", "name": "Gemini 4 Carbon", "default": true } ],
       "t2i":  [ { "id": "nano-banana-2", "name": "Nano Banana 2", "default": true, "reference": "multi" } ],
       "i2v":  [ { "id": "bytedance/seedance-2-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
@@ -214,7 +214,7 @@
   "synopsis": "Momo 和 Kuku 去超市买苹果，学习水果和购物用语",
   "character_ids": [1, 3],
   "target_duration": 90,
-  "default_models": { "llm": "gemini-3-8-flash-openai", "t2i": "nano-banana-2", "i2v": "bytedance/seedance-2-fast", "tts": "openai/gpt-audio" },
+  "default_models": { "llm": "gemini-4-carbon-openai", "t2i": "nano-banana-2", "i2v": "bytedance/seedance-2-fast", "tts": "openai/gpt-audio" },
   "tts_voice": "alex"
 }
 ```

@@ -47,7 +47,8 @@ function delay<T>(v: T, ms = 220): Promise<T> {
 
 const MODELS: ModelsMap = {
   llm: [
-    { id: 'gemini-3-8-flash-openai', name: 'Gemini 3.8 Flash', default: true },
+    { id: 'gemini-4-carbon-openai', name: 'Gemini 4 Carbon', default: true },
+    { id: 'gemini-3-8-flash-openai', name: 'Gemini 3.8 Flash' },
   ],
   t2i: [
     { id: 'nano-banana-2', name: 'Nano Banana 2', default: true, reference: 'multi' },
@@ -180,7 +181,7 @@ function makeShot(
 }
 
 const DEFAULT_MODELS = {
-  llm: 'gemini-3-8-flash-openai',
+  llm: 'gemini-4-carbon-openai',
   t2i: 'nano-banana-2',
   i2v: 'bytedance/seedance-2-fast',
   tts: 'openai/gpt-audio',

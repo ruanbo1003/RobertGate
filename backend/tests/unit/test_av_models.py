@@ -17,7 +17,7 @@ def test_registry_segments_and_shape():
 
 
 def test_default_models_are_kie_ids():
-    assert default_model("llm") == "gemini-3-8-flash-openai"
+    assert default_model("llm") == "gemini-4-carbon-openai"
     assert default_model("t2i") == "nano-banana-2"
     assert default_model("i2v") == "bytedance/seedance-2-fast"
     assert default_model("tts") == "openai/gpt-audio"  # tts 不迁，原样保留
@@ -71,3 +71,9 @@ def test_llm_segment_has_no_unverified_entries():
     # Final review I2：gpt-5.5 真机 422 "not supported"（/v1/models 列表不可信），
     # 假的下拉选项比没有选项更坏
     assert is_known_model("llm", "gpt-5.5") is False
+
+
+def test_llm_segment_keeps_verified_secondary():
+    # 2026-11-14 kie 通往 gemini-3.8 的网关故障（502/500），默认切 Carbon；
+    # 3.8 留作第二选项 = llm 线的通道内容灾
+    assert is_known_model("llm", "gemini-3-8-flash-openai") is True

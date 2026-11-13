@@ -6,10 +6,13 @@
 av_dialogue_router.py）。
 
 真机验证（2026-11-13，见 specs/2026-11-13-kie-migration-design.md 探测结果）：
-- llm：gemini-3-8-flash-openai 走 OpenAI 兼容 /v1/chat/completions，
-  json_object 生效（-openai 后缀 = 同步端点；不带后缀的同名 id 属 jobs 侧）。
-  注意 /v1/models 的列表不可信：gpt-5.5 在列却 422 "not supported"，
-  任何新条目入表前必须真机调通（勿只看列表）。
+- llm：走 OpenAI 兼容 /v1/chat/completions（-openai 后缀 = 同步端点；
+  不带后缀的同名 id 属 jobs 侧）。默认 gemini-4-carbon-openai
+  （2026-11-14 验证，json_object + 中文 prompt 通，0.15 credits/次）；
+  gemini-3-8-flash-openai 为第二选项（2026-11-13 验证通过，11-14 kie
+  网关对它 502/500 故障，恢复与否看上游）——两条即 llm 线的通道内容灾。
+  注意 /v1/models 的列表不可信：gpt-5.5、gpt-6-luna 在列却 422
+  "not supported"，任何新条目入表前必须真机调通（勿只看列表）。
 - t2i：nano-banana-2 多参考图（input.image_urls 数组）+ 9:16 验证通过，
   单图 10s；seedream 5.5 省钱档出图 + 9:16 验证通过（1584×2816），
   参考图未验，标 none。
@@ -25,10 +28,11 @@ from __future__ import annotations
 AV_MODELS: dict[str, list[dict]] = {
     "llm": [
         {
-            "id": "gemini-3-8-flash-openai",
-            "name": "Gemini 3.8 Flash",
+            "id": "gemini-4-carbon-openai",
+            "name": "Gemini 4 Carbon",
             "default": True,
         },
+        {"id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash"},
     ],
     "t2i": [
         {
