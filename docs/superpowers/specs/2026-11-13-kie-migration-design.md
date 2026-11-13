@@ -173,3 +173,21 @@ config 需新增 kie.ai 的 Chat 端点 base（OpenAI 兼容端点与现有 `KIE
 | 7 | **单图 10s**（nano-banana-2 costTime=10），nginx 180s 方案成立且余量大 |
 | + | **recordInfo 响应体可能是非法 JSON**：`param` 字段嵌套转义缺层，`resp.json()` 直接抛 JSONDecodeError。新客户端必须容错（如先剥 `param` 再解析，或用正则提取 state/resultJson） |
 | + | `recordInfo` 带 `creditsConsumed` 字段，可做成本追踪；成功态 `state: "success"`，结果在 `resultJson.resultUrls[0]` |
+
+## 端到端联调记录（2026-11-13，Task 9）
+
+真机直打客户端层（service/queue 层由 550 条单测覆盖）：
+
+| 链路 | 结果 | 耗时 | 产物 |
+|---|---|---|---|
+| llm generate_json | ✅ `{"ok": true}` | 6.6s | — |
+| t2i 角色设定图（无参考） | ✅ | 29.7s / 14.3s 两次 | 768×1376 (9:16) |
+| t2i 分镜图（1 参考图点名） | ✅ | 16.5s | 768×1376 |
+| i2v seedance-2-fast 4s | ✅ | 100.7s | 720×1280，带 AAC 音轨 |
+| 对白镜 omni 回归（_parse_body 重构波及） | ✅ | 57.8s | 720×1280，AAC |
+
+- 角色设定图同步路径实测 14–30s < 180s，nginx 方案余量充足。
+- **seedance 有内容审核**：卡通狐狸形象被拒 "copyright restrictions"（疑似撞 IP），失败任务**不扣费**，state=fail → ServerException 路径真机验证通过；换原创形象后通过。生产提示词需避开知名 IP 相似形象。
+- i2v 即使不开 generate_audio 也带 AAC 音轨（静音），合成管线按 has_audio_stream 分路可处理。
+- 老项目活配置回退未做真机（需起库），由单测三条覆盖（test_legacy_*）。
+- 花费：Task 9 共 ~170 credits；**余额 63.38 credits（≈$0.32），生产对白镜只够 1–2 条，需充值**。
