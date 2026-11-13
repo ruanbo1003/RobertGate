@@ -142,3 +142,46 @@ async def test_quota_body_code_propagates():
 async def test_image_poll_interval_defaults_short():
     c = KieAvClient(api_key="k", chat_base=CHAT_BASE)
     assert c._image_poll_interval == 2.5
+
+
+# ---------------- generate_json（同步 chat 端点）----------------
+
+
+def _chat_handler(captured: dict, content: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"role": "assistant", "content": content}}]},
+        )
+
+    return handler
+
+
+async def test_generate_json_parses_content_and_hits_chat_base():
+    captured: dict = {}
+    out = await make_client(_chat_handler(captured, '{"scenes": []}')).generate_json(
+        "sys", "user", "gemini-3-8-flash-openai"
+    )
+    assert out == {"scenes": []}
+    # chat 与 jobs 不同源，走错 base 会 404
+    assert captured["url"] == f"{CHAT_BASE}/chat/completions"
+    assert captured["model"] == "gemini-3-8-flash-openai"
+    assert captured["response_format"] == {"type": "json_object"}
+    assert captured["messages"][0] == {"role": "system", "content": "sys"}
+
+
+async def test_generate_json_raises_on_malformed_json():
+    with pytest.raises(ServerException) as e:
+        await make_client(_chat_handler({}, "not-json{")).generate_json("s", "u", "m")
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+
+
+async def test_generate_json_body_error_code_maps():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"code": 401, "msg": "Unauthorized"})
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_json("s", "u", "m")
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA

@@ -17,10 +17,12 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 
 from app.domain.errors import ServerException, codes
-from app.infrastructure.ai.av_client_kie import KieVideoClient
+from app.infrastructure.ai.av_client_kie import KieVideoClient, _parse_body
 from app.infrastructure.data.av_models import snap_duration
 
 _IMAGE_POLL_INTERVAL = 2.5
@@ -89,6 +91,34 @@ class KieAvClient(KieVideoClient):
         task_id = await self._create_task_for(model, task_input, "图生视频")
         url = await self._poll_result(task_id, self._poll_interval, "图生视频")
         return await self._download(url)
+
+    # ---------------- llm ----------------
+
+    async def generate_json(self, system: str, user: str, model: str) -> dict:
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.7,
+        }
+        try:
+            async with self._http(120.0) as client:
+                resp = await client.post(
+                    f"{self._chat_base}/chat/completions",
+                    headers=self._headers,
+                    json=payload,
+                )
+        except httpx.HTTPError as e:
+            raise ServerException(codes.AV_UPSTREAM_FAILED, f"LLM 网络错误：{e}") from e
+        body = _parse_body(resp, "LLM")
+        try:
+            content = body["choices"][0]["message"]["content"]
+            return json.loads(content)
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            raise ServerException(codes.AV_UPSTREAM_FAILED, f"LLM 返回非法 JSON：{e}") from e
 
     # ---------------- tts（已退役）----------------
 
