@@ -1,4 +1,4 @@
-"""av 客户端工厂（OpenRouter-only）与 Mock 行为单测。"""
+"""av 客户端工厂（kie 主通道）与 Mock 行为单测。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from app.infrastructure.ai.av_client import (
     set_av_client,
 )
 from app.infrastructure.ai.av_client_kie import KieVideoClient
-from app.infrastructure.ai.av_client_openrouter import OpenRouterAvClient
+from app.infrastructure.ai.av_client_kie_av import KieAvClient
 from app.infrastructure.ai.av_dialogue_router import DialogueVideoRouter
 
 
@@ -32,31 +32,42 @@ def _patch_settings(monkeypatch, openrouter_key: str, kie_key: str = ""):
         KIE_API_KEY = kie_key
         KIE_BASE_URL = "https://kie.test/api/v1"
         KIE_UPLOAD_BASE_URL = "https://upload.kie.test/api"
+        KIE_CHAT_BASE_URL = "https://kie.test/v1"
         AV_DIALOGUE_MODEL = "gemini-omni-video"
         AV_DIALOGUE_FALLBACK_MODEL = "bytedance/seedance-2.0-fast"
 
     monkeypatch.setattr(av_client_module, "_load_settings", lambda: _S())
 
 
-def test_factory_wraps_openrouter_with_dialogue_router(monkeypatch):
-    _patch_settings(monkeypatch, "sk-or-xxx")
+def test_kie_key_wires_kie_as_base_client(monkeypatch):
+    # kie-only：四线主通道 KieAvClient；对白镜 primary 在、兜底缺席
+    _patch_settings(monkeypatch, "", kie_key="kie-key")
     client = get_av_client()
     assert isinstance(client, AvClientWithDialogue)
-    assert isinstance(client._base, OpenRouterAvClient)
+    assert isinstance(client._base, KieAvClient)
     assert isinstance(client._router, DialogueVideoRouter)
-    # 没配 KIE_API_KEY：primary 缺席，router 退化为 fallback-only
-    assert client._router._primary is None
+    assert isinstance(client._router._primary, KieVideoClient)
+    assert client._router._primary_tag == "kie:gemini-omni-video"
+    assert client._router._fallback_video is None
+
+
+def test_openrouter_client_still_serves_dialogue_fallback(monkeypatch):
+    # Review Focus 2：砍四条线兜底时极易顺手摘掉 OpenRouter——
+    # 对白镜兜底必须还在，且只有 kie 挂掉时才暴露
+    _patch_settings(monkeypatch, "sk-or-xxx", kie_key="kie-key")
+    client = get_av_client()
+    assert isinstance(client._base, KieAvClient)
+    assert client._router._fallback_video is not None
     assert client._router._fallback_tag == "openrouter:bytedance/seedance-2.0-fast"
 
 
-def test_factory_wires_kie_primary_when_key_set(monkeypatch):
-    _patch_settings(monkeypatch, "sk-or-xxx", kie_key="kie-key")
-    client = get_av_client()
-    assert isinstance(client._router._primary, KieVideoClient)
-    assert client._router._primary_tag == "kie:gemini-omni-video"
+def test_openrouter_only_returns_mock(monkeypatch):
+    # kie 是唯一主通道，没有它就整体落 Mock（无 Key 全链路可走通语义不变）
+    _patch_settings(monkeypatch, "sk-or-xxx")
+    assert isinstance(get_av_client(), MockAvClient)
 
 
-def test_factory_returns_mock_without_key(monkeypatch):
+def test_no_key_returns_mock(monkeypatch):
     _patch_settings(monkeypatch, "")
     assert isinstance(get_av_client(), MockAvClient)
 

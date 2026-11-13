@@ -95,3 +95,25 @@ async def test_no_primary_goes_straight_to_fallback():
     assert video == MP4_FALLBACK
     assert tag == "openrouter:bytedance/seedance-2.0-fast"
     assert fallback_calls == [(b"img", "p", 6)]
+
+
+async def test_no_fallback_propagates_primary_error():
+    # kie-only 装配：fallback 缺席，primary 的异常原样冒泡（不被兜底吞掉）
+    from app.domain.errors import ServerException, codes
+
+    class FailingPrimary:
+        async def generate_dialogue_video(self, image, prompt, duration_seconds):
+            raise ServerException(codes.AV_UPSTREAM_QUOTA, "no credits")
+
+    router = DialogueVideoRouter(
+        primary=FailingPrimary(),
+        fallback_video=None,
+        primary_tag="kie:gemini-omni-video",
+        fallback_tag="",
+        fallback_ladder=(4, 6, 8, 10),
+    )
+    import pytest as _pytest
+
+    with _pytest.raises(ServerException) as e:
+        await router.generate_dialogue_video(b"i", "p", 6)
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA

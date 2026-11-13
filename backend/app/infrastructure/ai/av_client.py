@@ -1,8 +1,12 @@
-"""ai-videos 客户端装配：OpenRouter 实现（见 av_client_openrouter.py）+ Mock + 工厂。
+"""ai-videos 客户端装配：kie.ai 主通道（av_client_kie_av.py）+ Mock + 工厂。
 
-Robert 2026-11-05 拍板：模型只用 OpenRouter。原 SiliconFlowAvClient 已删除
-（需要时从 git 历史恢复）。未配 OPENROUTER_API_KEY 时整体落到 MockAvClient，
-保证无 Key 环境全链路可走通（开发/联调语义不变）。
+Robert 2026-11-13 拍板迁移 kie.ai（OpenRouter 账号被限闭源三家，见
+specs/2026-11-13-kie-migration-design.md）。装配规则：
+- 有 KIE_API_KEY：四线（llm/t2i/i2v/tts*）走 KieAvClient；对白镜 router
+  primary 走 KieVideoClient，兜底仅在同时配了 OPENROUTER_API_KEY 时存在
+  （OpenRouterAvClient 只服务这一处，四线不再经过它）。
+- 无 KIE_API_KEY：整体 MockAvClient，保证无 Key 环境全链路可走通。
+*tts 已退役，KieAvClient.generate_speech 直接抛错（链路入口在 service 层已被拦）。
 """
 
 from __future__ import annotations
@@ -11,6 +15,7 @@ import asyncio
 import base64
 
 from app.infrastructure.ai.av_client_kie import KieVideoClient
+from app.infrastructure.ai.av_client_kie_av import KieAvClient
 from app.infrastructure.ai.av_client_openrouter import OpenRouterAvClient
 from app.infrastructure.ai.av_dialogue_router import DialogueVideoRouter
 
@@ -132,39 +137,45 @@ def _load_settings():
 
 
 def get_av_client():
-    """全局单例：配置了 OPENROUTER_API_KEY 用 OpenRouter（+ 对白镜路由），否则用 Mock。"""
+    """全局单例：配置了 KIE_API_KEY 用 kie.ai（+ 对白镜路由），否则用 Mock。"""
     global _av_client
     if _av_client is not None:
         return _av_client
     settings = _load_settings()
-    if settings.OPENROUTER_API_KEY:
-        base = OpenRouterAvClient(
-            api_key=settings.OPENROUTER_API_KEY,
-            base_url=settings.OPENROUTER_BASE_URL,
-            ffmpeg_bin=settings.AV_FFMPEG_BIN,
-            tts_tempo=settings.AV_TTS_TEMPO,
+    if settings.KIE_API_KEY:
+        base = KieAvClient(
+            api_key=settings.KIE_API_KEY,
+            base=settings.KIE_BASE_URL,
+            upload_base=settings.KIE_UPLOAD_BASE_URL,
+            chat_base=settings.KIE_CHAT_BASE_URL,
         )
-        primary = None
-        if settings.KIE_API_KEY:
-            primary = KieVideoClient(
-                api_key=settings.KIE_API_KEY,
-                model=settings.AV_DIALOGUE_MODEL,
-                base=settings.KIE_BASE_URL,
-                upload_base=settings.KIE_UPLOAD_BASE_URL,
+        primary = KieVideoClient(
+            api_key=settings.KIE_API_KEY,
+            model=settings.AV_DIALOGUE_MODEL,
+            base=settings.KIE_BASE_URL,
+            upload_base=settings.KIE_UPLOAD_BASE_URL,
+        )
+        fallback_video = None
+        if settings.OPENROUTER_API_KEY:
+            openrouter = OpenRouterAvClient(
+                api_key=settings.OPENROUTER_API_KEY,
+                base_url=settings.OPENROUTER_BASE_URL,
+                ffmpeg_bin=settings.AV_FFMPEG_BIN,
+                tts_tempo=settings.AV_TTS_TEMPO,
             )
 
-        async def _fallback_video(image: bytes, prompt: str, duration_seconds: int) -> bytes:
-            return await base.generate_video(
-                image,
-                prompt,
-                settings.AV_DIALOGUE_FALLBACK_MODEL,
-                duration_seconds,
-                generate_audio=True,
-            )
+            async def fallback_video(image: bytes, prompt: str, duration_seconds: int) -> bytes:
+                return await openrouter.generate_video(
+                    image,
+                    prompt,
+                    settings.AV_DIALOGUE_FALLBACK_MODEL,
+                    duration_seconds,
+                    generate_audio=True,
+                )
 
         router = DialogueVideoRouter(
             primary=primary,
-            fallback_video=_fallback_video,
+            fallback_video=fallback_video,
             primary_tag=f"kie:{settings.AV_DIALOGUE_MODEL}",
             fallback_tag=f"openrouter:{settings.AV_DIALOGUE_FALLBACK_MODEL}",
             fallback_ladder=_FALLBACK_DURATION_LADDER,
