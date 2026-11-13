@@ -198,3 +198,13 @@ config 需新增 kie.ai 的 Chat 端点 base（OpenAI 兼容端点与现有 `KIE
 2. **i2v 第二款模型真机验证入表**——seedance 有内容审核（版权相似即拒），单模型没有通道内容灾（final review I3）；候选：`bytedance/seedance-2` / `kling-3.0-omni/image-to-video`。
 3. seedream 5.5 已真机验证（出图 + 9:16，1584×2816，2026-11-13 修复轮）；参考图能力未验，维持 `none` 档。
 4. gpt-5.5 真机 422 已从注册表摘除；/v1/models 列表不可信，新条目入表前必须真机调通。
+
+## 候选扩充验证记录（2026-11-14，Robert 要求多些可选）
+
+全部真机验证后入表；花费约 100 credits（含一次 omni/seedance-mini 各 4s 实测）。
+
+- **llm**（OpenAI 兼容端点实际只开 Gemini 系 + Kimi）：argon / 3.6-flash / kimi-k3.1-pro ✅ 均带 json_object 验证；claude-sonnet-5、claude-haiku-5.5、claude-fable-5、kimi-k3、grok-4-7、gpt-6.1-terra、gpt-6-sol、deepseek-v3 一律 422。
+- **t2i**：nano-banana-pro 与 2.1 出图 + 参考图 multi ✅；seedream/5-flash、gpt-image-2-6/economy 出图 ✅（竖屏比例均正确）。
+- **i2v**：seedance-2-mini 4s 实测 ✅（720×1280 带音轨）；**gemini-omni-flash-1-2（Gemini Omni 1.2 Flash，Robert 点名）** 4s 实测 ✅（101s 出片，~9 credits/s，比 seedance-2-fast 便宜），duration 3-15 整数（3/5/7/12/15 过、16/99 拒），且提供跨厂商容灾（字节系撞内容审核时的替代）。
+- **kling-3.0-omni/image-to-video 不入表**：aspect_ratio 字段任何取值均被拒、必须省略（比例由首帧推导），与统一客户端形状不兼容；将来要接需按模型裁剪参数。
+- **计费新知**：omni 系 createTask 即按时长预扣（坏图探测一度预扣 252），任务失败后**异步退款**；seedance 内容审核拒绝同样走退款。探测时余额波动不代表真实损耗，以最终余额为准。

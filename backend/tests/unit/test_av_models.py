@@ -77,3 +77,27 @@ def test_llm_segment_keeps_verified_secondary():
     # 2026-11-14 kie 通往 gemini-3.8 的网关故障（502/500），默认切 Carbon；
     # 3.8 留作第二选项 = llm 线的通道内容灾
     assert is_known_model("llm", "gemini-3-8-flash-openai") is True
+
+
+def test_expanded_roster_all_verified_2026_11_14():
+    # Robert 要求扩充可选模型；全部真机验证（见 spec"候选扩充验证记录"）
+    for seg, mid in [
+        ("llm", "gemini-4-argon-openai"),
+        ("llm", "gemini-3-6-flash-openai"),
+        ("llm", "kimi-k3-1-pro"),
+        ("t2i", "nano-banana-pro"),
+        ("t2i", "nano-banana-2-1"),
+        ("t2i", "seedream/5-flash-text-to-image"),
+        ("t2i", "gpt-image-2-6/economy-text-to-image"),
+        ("i2v", "bytedance/seedance-2-mini"),
+        ("i2v", "google/gemini-omni-flash-1-2"),
+    ]:
+        assert is_known_model(seg, mid) is True, mid
+    # nano 家族参考图能力实测为 multi
+    assert reference_mode("nano-banana-pro") == "multi"
+    assert reference_mode("nano-banana-2-1") == "multi"
+    # omni-flash 档位 3-15 整数（3/5/7/12/15 实测过、16/99 被拒）
+    assert snap_duration("google/gemini-omni-flash-1-2", 3) == 3
+    assert snap_duration("google/gemini-omni-flash-1-2", 99) == 15
+    # kling 不入表：aspect_ratio 必须省略，与统一客户端形状不兼容
+    assert is_known_model("i2v", "kling-3.0-omni/image-to-video") is False

@@ -13,6 +13,12 @@ av_dialogue_router.py）。
   网关对它 502/500 故障，恢复与否看上游）——两条即 llm 线的通道内容灾。
   注意 /v1/models 的列表不可信：gpt-5.5、gpt-6-luna 在列却 422
   "not supported"，任何新条目入表前必须真机调通（勿只看列表）。
+- 2026-11-14 扩充（Robert 要求多些可选，全部真机验证）：llm 增 argon/
+  3.6-flash/kimi-k3.1-pro（claude/grok/gpt/deepseek 系在该端点一律 422）；
+  t2i 增 nano-banana-pro 与 2.1（参考图实测 multi）、seedream 5-flash、
+  gpt-image-2.6 economy；i2v 增 seedance-2-mini（4-15）与
+  gemini-omni-flash-1-2（3-15，Robert 点名要有）。kling i2v 不入表：
+  aspect_ratio 字段必须省略（任何取值均拒），与统一客户端形状不兼容。
 - t2i：nano-banana-2 多参考图（input.image_urls 数组）+ 9:16 验证通过，
   单图 10s；seedream 5.5 省钱档出图 + 9:16 验证通过（1584×2816），
   参考图未验，标 none。
@@ -33,6 +39,9 @@ AV_MODELS: dict[str, list[dict]] = {
             "default": True,
         },
         {"id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash"},
+        {"id": "gemini-4-argon-openai", "name": "Gemini 4 Argon"},
+        {"id": "gemini-3-6-flash-openai", "name": "Gemini 3.6 Flash"},
+        {"id": "kimi-k3-1-pro", "name": "Kimi K3.1 Pro"},
     ],
     "t2i": [
         {
@@ -42,8 +51,28 @@ AV_MODELS: dict[str, list[dict]] = {
             "reference": "multi",
         },
         {
+            "id": "nano-banana-pro",
+            "name": "Nano Banana Pro",
+            "reference": "multi",
+        },
+        {
+            "id": "nano-banana-2-1",
+            "name": "Nano Banana 2.1",
+            "reference": "multi",
+        },
+        {
             "id": "seedream/5-5-text-to-image",
             "name": "Seedream 5.5（省钱档）",
+            "reference": "none",
+        },
+        {
+            "id": "seedream/5-flash-text-to-image",
+            "name": "Seedream 5 Flash",
+            "reference": "none",
+        },
+        {
+            "id": "gpt-image-2-6/economy-text-to-image",
+            "name": "GPT Image 2.6 Economy",
             "reference": "none",
         },
     ],
@@ -53,6 +82,16 @@ AV_MODELS: dict[str, list[dict]] = {
             "name": "Seedance 2 Fast",
             "default": True,
             "durations": list(range(4, 16)),
+        },
+        {
+            "id": "bytedance/seedance-2-mini",
+            "name": "Seedance 2 Mini",
+            "durations": list(range(4, 16)),
+        },
+        {
+            "id": "google/gemini-omni-flash-1-2",
+            "name": "Gemini Omni 1.2 Flash",
+            "durations": list(range(3, 16)),
         },
     ],
     "tts": [

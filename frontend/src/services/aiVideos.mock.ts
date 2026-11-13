@@ -49,13 +49,22 @@ const MODELS: ModelsMap = {
   llm: [
     { id: 'gemini-4-carbon-openai', name: 'Gemini 4 Carbon', default: true },
     { id: 'gemini-3-8-flash-openai', name: 'Gemini 3.8 Flash' },
+    { id: 'gemini-4-argon-openai', name: 'Gemini 4 Argon' },
+    { id: 'gemini-3-6-flash-openai', name: 'Gemini 3.6 Flash' },
+    { id: 'kimi-k3-1-pro', name: 'Kimi K3.1 Pro' },
   ],
   t2i: [
     { id: 'nano-banana-2', name: 'Nano Banana 2', default: true, reference: 'multi' },
+    { id: 'nano-banana-pro', name: 'Nano Banana Pro', reference: 'multi' },
+    { id: 'nano-banana-2-1', name: 'Nano Banana 2.1', reference: 'multi' },
     { id: 'seedream/5-5-text-to-image', name: 'Seedream 5.5（省钱档）', reference: 'none' },
+    { id: 'seedream/5-flash-text-to-image', name: 'Seedream 5 Flash', reference: 'none' },
+    { id: 'gpt-image-2-6/economy-text-to-image', name: 'GPT Image 2.6 Economy', reference: 'none' },
   ],
   i2v: [
     { id: 'bytedance/seedance-2-fast', name: 'Seedance 2 Fast', default: true },
+    { id: 'bytedance/seedance-2-mini', name: 'Seedance 2 Mini' },
+    { id: 'google/gemini-omni-flash-1-2', name: 'Gemini Omni 1.2 Flash' },
   ],
   tts: [
     {

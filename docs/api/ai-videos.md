@@ -44,7 +44,7 @@
     "models": {
       "llm":  [ { "id": "gemini-4-carbon-openai", "name": "Gemini 4 Carbon", "default": true } ],
       "t2i":  [ { "id": "nano-banana-2", "name": "Nano Banana 2", "default": true, "reference": "multi" } ],
-      "i2v":  [ { "id": "bytedance/seedance-2-fast", "name": "Seedance 2.0 Fast", "default": true } ],
+      "i2v":  [ { "id": "bytedance/seedance-2-fast", "name": "Seedance 2 Fast", "default": true }, { "id": "google/gemini-omni-flash-1-2", "name": "Gemini Omni 1.2 Flash" }, { "id": "bytedance/seedance-2-mini", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
                   "voices": ["alex", "anna", "benjamin", "bella"] } ],
       "dialogue_video": [
