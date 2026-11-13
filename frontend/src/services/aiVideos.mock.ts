@@ -48,7 +48,6 @@ function delay<T>(v: T, ms = 220): Promise<T> {
 const MODELS: ModelsMap = {
   llm: [
     { id: 'gemini-3-8-flash-openai', name: 'Gemini 3.8 Flash', default: true },
-    { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2' },
   ],
   t2i: [
     { id: 'nano-banana-2', name: 'Nano Banana 2', default: true, reference: 'multi' },
@@ -56,9 +55,6 @@ const MODELS: ModelsMap = {
   ],
   i2v: [
     { id: 'bytedance/seedance-2-fast', name: 'Seedance 2 Fast', default: true },
-    { id: 'alibaba/wan-3.0', name: 'Wan 3.0' },
-    { id: 'kwaivgi/kling-v3.0-std', name: 'Kling 3.0 Std' },
-    { id: 'google/veo-3.1-fast', name: 'Veo 3.1 Fast' },
   ],
   tts: [
     {
@@ -184,9 +180,9 @@ function makeShot(
 }
 
 const DEFAULT_MODELS = {
-  llm: 'google/gemini-3.8-flash',
-  t2i: 'google/gemini-3.1-flash-image',
-  i2v: 'bytedance/seedance-2.0-fast',
+  llm: 'gemini-3-8-flash-openai',
+  t2i: 'nano-banana-2',
+  i2v: 'bytedance/seedance-2-fast',
   tts: 'openai/gpt-audio',
 }
 
@@ -748,10 +744,10 @@ export function updateShotMock(
     if (shot.dialogue.length > 0) {
       shot.audio = null
       shot.duration_estimate = estimateDialogueDuration(shot.dialogue)
-      if (shot.video.model === 'bytedance/seedance-2.0-fast') shot.video.model = 'kie:gemini-omni-video'
+      if (shot.video.model === 'bytedance/seedance-2-fast') shot.video.model = 'kie:gemini-omni-video'
     } else if (!shot.audio) {
       shot.audio = { ...makeAsset('pending', 'openai/gpt-audio', null), voice: 'alloy', duration: null }
-      if (shot.video.model === 'kie:gemini-omni-video') shot.video.model = 'bytedance/seedance-2.0-fast'
+      if (shot.video.model === 'kie:gemini-omni-video') shot.video.model = 'bytedance/seedance-2-fast'
     }
   }
   if (visualChanged) {

@@ -191,3 +191,10 @@ config 需新增 kie.ai 的 Chat 端点 base（OpenAI 兼容端点与现有 `KIE
 - i2v 即使不开 generate_audio 也带 AAC 音轨（静音），合成管线按 has_audio_stream 分路可处理。
 - 老项目活配置回退未做真机（需起库），由单测三条覆盖（test_legacy_*）。
 - 花费：Task 9 共 ~170 credits；**余额 63.38 credits（≈$0.32），生产对白镜只够 1–2 条，需充值**。
+
+## 待补事项（充值后）
+
+1. **i2v 10s+ duration 档位补探**（只试非法值！合法值会建任务即计费），补进注册表 `durations`。
+2. **i2v 第二款模型真机验证入表**——seedance 有内容审核（版权相似即拒），单模型没有通道内容灾（final review I3）；候选：`bytedance/seedance-2` / `kling-3.0-omni/image-to-video`。
+3. seedream 5.5 已真机验证（出图 + 9:16，1584×2816，2026-11-13 修复轮）；参考图能力未验，维持 `none` 档。
+4. gpt-5.5 真机 422 已从注册表摘除；/v1/models 列表不可信，新条目入表前必须真机调通。

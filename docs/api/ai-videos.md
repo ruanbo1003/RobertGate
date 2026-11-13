@@ -44,7 +44,7 @@
     "models": {
       "llm":  [ { "id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash", "default": true } ],
       "t2i":  [ { "id": "nano-banana-2", "name": "Nano Banana 2", "default": true, "reference": "multi" } ],
-      "i2v":  [ { "id": "bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast", "default": true } ],
+      "i2v":  [ { "id": "bytedance/seedance-2-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
                   "voices": ["alex", "anna", "benjamin", "bella"] } ],
       "dialogue_video": [
@@ -57,7 +57,7 @@
 }
 ```
 
-`llm`/`t2i`/`i2v`/`tts` 来自 OpenRouter 单一 provider。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
+`llm`/`t2i`/`i2v`/`tts` 来自 kie.ai 单一主通道（对白镜兜底除外）。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
 
 `dialogue_video` 是**唯一跨渠道段，仅展示用，不可选择**：对白镜固定路由 kie.ai 主（`kie:gemini-omni-video`）+ OpenRouter 兜底（`openrouter:bytedance/seedance-2.0-fast`），`id` 即分镜 `video_model` 落库的实际渠道:模型 tag（见 5.2）。
 
@@ -393,12 +393,12 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 **POST** `/api/v1/ai-videos/projects/{id}/shots/{shot_id}/video`
 
 ```json
-{ "model": "bytedance/seedance-2.0-fast" }
+{ "model": "bytedance/seedance-2-fast" }
 ```
 
 该镜 `image.state != success` → `2003, "请先生成分镜图"`。以分镜图为首帧。
 
-`dialogue` 非空的对白镜：忽略请求体 `model`，固定走对白镜路由（kie.ai 主 + OpenRouter 兜底，见一.1 `dialogue_video`）——按台词与出场角色的 `voice_desc` 拼 prompt，一次生成带口型、带语音的视频（音视同出），主渠道失败自动降级到兜底。成功后 `video.model` 回填**实际生效**的渠道:模型（如 `kie:gemini-omni-video` 或降级后的 `openrouter:bytedance/seedance-2.0-fast`），供前端只读展示。`dialogue` 为空的纯画面镜走原 i2v 流程不变。
+`dialogue` 非空的对白镜：忽略请求体 `model`，固定走对白镜路由（kie.ai 主 + OpenRouter 兜底，见一.1 `dialogue_video`）——按台词与出场角色的 `voice_desc` 拼 prompt，一次生成带口型、带语音的视频（音视同出），主渠道失败自动降级到兜底（兜底仅在服务端配置了 OPENROUTER_API_KEY 时存在，否则主渠道错误直接返回）。成功后 `video.model` 回填**实际生效**的渠道:模型（如 `kie:gemini-omni-video` 或降级后的 `openrouter:bytedance/seedance-2.0-fast`），供前端只读展示。`dialogue` 为空的纯画面镜走原 i2v 流程不变。
 
 ### 5.3 生成配音
 

@@ -64,3 +64,9 @@ def test_is_known_model_accepts_current_entries():
 def test_default_voice_matches_default_tts_model():
     tts = next(m for m in AV_MODELS["tts"] if m.get("default"))
     assert default_voice() == tts["voices"][0]
+
+
+def test_llm_segment_has_no_unverified_entries():
+    # Final review I2：gpt-5.5 真机 422 "not supported"（/v1/models 列表不可信），
+    # 假的下拉选项比没有选项更坏
+    assert is_known_model("llm", "gpt-5.5") is False

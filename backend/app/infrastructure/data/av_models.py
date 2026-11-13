@@ -8,8 +8,11 @@ av_dialogue_router.py）。
 真机验证（2026-11-13，见 specs/2026-11-13-kie-migration-design.md 探测结果）：
 - llm：gemini-3-8-flash-openai 走 OpenAI 兼容 /v1/chat/completions，
   json_object 生效（-openai 后缀 = 同步端点；不带后缀的同名 id 属 jobs 侧）。
+  注意 /v1/models 的列表不可信：gpt-5.5 在列却 422 "not supported"，
+  任何新条目入表前必须真机调通（勿只看列表）。
 - t2i：nano-banana-2 多参考图（input.image_urls 数组）+ 9:16 验证通过，
-  单图 10s；seedream 5.5 为省钱档（未验证参考图，标 none）。
+  单图 10s；seedream 5.5 省钱档出图 + 9:16 验证通过（1584×2816），
+  参考图未验，标 none。
 - i2v：bytedance/seedance-2-fast durations 4/5/6/8 实测合法（3 → 422），
   10s+ 档位因余额不足未探明，待补。
 - tts：死链路不迁（生成端入口全被拦，见 spec"TTS 不在范围内"），原样保留
@@ -25,7 +28,6 @@ AV_MODELS: dict[str, list[dict]] = {
             "name": "Gemini 3.8 Flash",
             "default": True,
         },
-        {"id": "gpt-5.5", "name": "GPT 5.5"},
     ],
     "t2i": [
         {

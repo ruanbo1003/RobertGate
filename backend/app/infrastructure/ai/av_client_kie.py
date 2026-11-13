@@ -30,8 +30,41 @@ logger = logging.getLogger(__name__)
 
 _QUOTA_STATUS = {401, 402}
 _DURATION_LADDER = (4, 6, 8, 10)
-# recordInfo 的 param 字段转义缺层会毒化整个 JSON：剥掉它再解析
-_PARAM_FIELD_RE = re.compile(r'"param"\s*:\s*".*?",\s*(?=")', re.S)
+# 轮询期瞬时上游错误（限流/5xx）的连续容忍次数：任务已计费，不能一撞就丢
+_POLL_TRANSIENT_LIMIT = 3
+# recordInfo 的 param 字段转义缺层会毒化整个 JSON（形状随 input 内容变化，
+# 无法整体修复）：按字段定向提取，拼回最小合法结构
+_CODE_RE = re.compile(r'"code"\s*:\s*(\d+)')
+_STATE_RE = re.compile(r'"state"\s*:\s*"([a-zA-Z_]+)"')
+_STR_FIELD_RES = {
+    name: re.compile(rf'"{name}"\s*:\s*"((?:[^"\\]|\\.)*)"')
+    for name in ("resultJson", "failMsg", "msg")
+}
+
+
+def _extract_fields(text: str) -> dict:
+    """非法 JSON 的兜底解析：定向抓 code/state/resultJson/failMsg/msg，
+    与 param 的具体形状无关。"""
+    body: dict = {}
+    data: dict = {}
+    if m := _CODE_RE.search(text):
+        body["code"] = int(m.group(1))
+    if m := _STATE_RE.search(text):
+        data["state"] = m.group(1)
+    for name, pattern in _STR_FIELD_RES.items():
+        if m := pattern.search(text):
+            # 还原字符串字面量的转义（\" -> " 等）
+            try:
+                value = json.loads('"' + m.group(1) + '"')
+            except json.JSONDecodeError:
+                value = m.group(1)
+            if name == "msg":
+                body[name] = value
+            else:
+                data[name] = value
+    if data:
+        body["data"] = data
+    return body
 
 
 def _is_quota(code: int, text: str) -> bool:
@@ -63,14 +96,14 @@ def _parse_body(resp: httpx.Response, what: str) -> dict:
         _raise_upstream(resp, what)
     try:
         body = resp.json()
-    except ValueError:
-        try:
-            body = json.loads(_PARAM_FIELD_RE.sub("", resp.text))
-        except ValueError as e:
+    except ValueError as e:
+        body = _extract_fields(resp.text)
+        if not body:
             logger.error("kie %s invalid json: %s", what, resp.text[:300])
             raise ServerException(
                 codes.AV_UPSTREAM_FAILED, f"{what} 响应非法 JSON"
             ) from e
+        logger.warning("kie %s 响应非法 JSON，已定向提取关键字段", what)
     code = body.get("code")
     if isinstance(code, int) and code != 200:
         msg = str(body.get("msg") or "")[:300]
@@ -158,19 +191,36 @@ class KieVideoClient:
         未知 state 继续轮，超时消息带最后一次 state 便于排障。"""
         waited = 0.0
         last_state = ""
+        transient = 0
         while waited <= self._poll_timeout:
             await asyncio.sleep(interval)
             waited += max(interval, 1.0)
+            # 任务已在上游跑且已计费：查询期的瞬时错误（限流/5xx/网络抖动）
+            # 有限容忍，连续超限才放弃；配额错误（401/402/余额类 429）立即抛
             try:
-                async with self._http(60.0) as client:
-                    resp = await client.get(
-                        f"{self._base}/jobs/recordInfo",
-                        headers=self._headers,
-                        params={"taskId": task_id},
-                    )
-            except httpx.HTTPError as e:
-                raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what}查询网络错误：{e}") from e
-            data = _parse_body(resp, f"{what}查询").get("data") or {}
+                try:
+                    async with self._http(60.0) as client:
+                        resp = await client.get(
+                            f"{self._base}/jobs/recordInfo",
+                            headers=self._headers,
+                            params={"taskId": task_id},
+                        )
+                except httpx.HTTPError as e:
+                    raise ServerException(
+                        codes.AV_UPSTREAM_FAILED, f"{what}查询网络错误：{e}"
+                    ) from e
+                body = _parse_body(resp, f"{what}查询")
+            except ServerException as e:
+                if e.code == codes.AV_UPSTREAM_QUOTA:
+                    raise
+                transient += 1
+                if transient >= _POLL_TRANSIENT_LIMIT:
+                    raise
+                logger.warning("%s查询瞬时失败（%d/%d），继续轮询：%s",
+                               what, transient, _POLL_TRANSIENT_LIMIT, e.message)
+                continue
+            transient = 0
+            data = body.get("data") or {}
             state = str(data.get("state") or "").lower()
             last_state = state or last_state
             if state == "success":
