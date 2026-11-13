@@ -13,8 +13,9 @@ av_dialogue_router.py）。
 - t2i：nano-banana-2 多参考图（input.image_urls 数组）+ 9:16 验证通过，
   单图 10s；seedream 5.5 省钱档出图 + 9:16 验证通过（1584×2816），
   参考图未验，标 none。
-- i2v：bytedance/seedance-2-fast durations 4/5/6/8 实测合法（3 → 422），
-  10s+ 档位因余额不足未探明，待补。
+- i2v：bytedance/seedance-2-fast durations 为 4-15 整数（官方文档
+  "4-15 seconds or -1"，与真机七点互证：3→422 拒、4/5/6/8 过、
+  10/12/15 通过档位校验——402 发生在校验之后）。
 - tts：死链路不迁（生成端入口全被拦，见 spec"TTS 不在范围内"），原样保留
   仅为 API 契约兼容。
 """
@@ -47,7 +48,7 @@ AV_MODELS: dict[str, list[dict]] = {
             "id": "bytedance/seedance-2-fast",
             "name": "Seedance 2 Fast",
             "default": True,
-            "durations": [4, 5, 6, 8],
+            "durations": list(range(4, 16)),
         },
     ],
     "tts": [

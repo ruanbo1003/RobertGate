@@ -39,12 +39,13 @@ def test_reference_mode_resolves_for_new_default_t2i():
 
 def test_snap_duration_resolves_for_new_default_i2v():
     # Review Focus 1：匹配落空会静默掉进 max(2, min(10, s)) 兜底分支。
-    # 档位 [4,5,6,8] 为真机验证值（10s+ 因余额不足未探，见 spec 真机探测结果 #4）
+    # 档位 4-15 整数：官方文档（docs.kie.ai seedance-2-fast "4-15 seconds or -1"）
+    # 与真机七点互证（3→422 拒；4/5/6/8 过；10/12/15 通过档位校验）
     model = default_model("i2v")
     assert snap_duration(model, 3) == 4
-    assert snap_duration(model, 5) == 5
-    assert snap_duration(model, 7) == 6  # 平手取小
-    assert snap_duration(model, 99) == 8
+    assert snap_duration(model, 7) == 7
+    assert snap_duration(model, 12) == 12
+    assert snap_duration(model, 99) == 15
     assert snap_duration("unknown/x", 99) == 10
     assert snap_duration("unknown/x", 1) == 2
 

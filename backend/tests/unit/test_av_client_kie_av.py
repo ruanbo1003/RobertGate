@@ -112,7 +112,7 @@ async def test_generate_video_snaps_duration_and_sends_audio_flag():
         b"first-frame", "dog runs", "bytedance/seedance-2-fast", duration_seconds=7, generate_audio=True
     )
     assert out == MP4
-    assert captured["input"]["duration"] == "6"  # 7 → 档位 [4,5,6,8] 平手取小
+    assert captured["input"]["duration"] == "7"  # 档位 4-15 整数，7 原样通过
     assert captured["input"]["image_urls"] == ["https://files.test/u1.png"]
     assert captured["input"]["generate_audio"] is True
     assert captured["input"]["resolution"] == "720p"
