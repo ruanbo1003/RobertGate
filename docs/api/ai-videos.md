@@ -42,8 +42,8 @@
   "code": 0,
   "data": {
     "models": {
-      "llm":  [ { "id": "google/gemini-3.8-flash", "name": "Gemini 3.8 Flash", "default": true } ],
-      "t2i":  [ { "id": "google/gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "default": true, "reference": "multi" } ],
+      "llm":  [ { "id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash", "default": true } ],
+      "t2i":  [ { "id": "nano-banana-2", "name": "Nano Banana 2", "default": true, "reference": "multi" } ],
       "i2v":  [ { "id": "bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
                   "voices": ["alex", "anna", "benjamin", "bella"] } ],
@@ -148,7 +148,7 @@
 #### 请求
 
 ```json
-{ "model": "google/gemini-3.1-flash-image", "prompt": "可选，缺省用 appearance_prompt 拼接标准后缀" }
+{ "model": "nano-banana-2", "prompt": "可选，缺省用 appearance_prompt 拼接标准后缀" }
 ```
 
 #### 响应
@@ -214,7 +214,7 @@
   "synopsis": "Momo 和 Kuku 去超市买苹果，学习水果和购物用语",
   "character_ids": [1, 3],
   "target_duration": 90,
-  "default_models": { "llm": "google/gemini-3.8-flash", "t2i": "google/gemini-3.1-flash-image", "i2v": "bytedance/seedance-2.0-fast", "tts": "openai/gpt-audio" },
+  "default_models": { "llm": "gemini-3-8-flash-openai", "t2i": "nano-banana-2", "i2v": "bytedance/seedance-2-fast", "tts": "openai/gpt-audio" },
   "tts_voice": "alex"
 }
 ```
@@ -225,7 +225,7 @@
 | `synopsis` | 是 | 1-1000 字符 |
 | `character_ids` | 是 | 1-4 个已存在角色 |
 | `target_duration` | 是 | 30-120（秒） |
-| `default_models` | 否 | 缺省取各类型 default 模型 |
+| `default_models` | 否 | 缺省取各类型 default 模型；落库值若已不在注册表内（如迁移前的 OpenRouter id），生成时读取回退到当前 default 并打日志，不改库 |
 | `tts_voice` | 否 | 缺省取 tts 模型第一个 voice |
 
 ### 3.3 项目详情
