@@ -37,7 +37,12 @@ from app.infrastructure.av_compose import FfmpegComposer
 from app.infrastructure.av_storage import FsAvStorage
 from app.infrastructure.ir_parsers import FsDocumentParser
 from app.infrastructure.av_whisper import WhisperAligner
-from app.infrastructure.data.av_models import default_model, default_voice, reference_mode
+from app.infrastructure.data.av_models import (
+    default_model,
+    default_voice,
+    is_known_model,
+    reference_mode,
+)
 from app.infrastructure.legal.factory import get_legal_chat, get_legal_kb
 from app.infrastructure.data.english_data import ENGLISH_THEMES
 from app.infrastructure.database.session import get_db
@@ -258,6 +263,7 @@ async def get_av_project_service(
         runner=get_task_runner(),
         uow_factory=new_uow,
         model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
+        model_known=is_known_model,
         voice_default=default_voice(),
         whisper=get_whisper_aligner(),
     )

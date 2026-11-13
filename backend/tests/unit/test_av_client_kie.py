@@ -232,3 +232,170 @@ async def test_create_task_quota_status_raises_av_upstream_quota():
     with pytest.raises(ServerException) as e:
         await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
     assert e.value.code == codes.AV_UPSTREAM_QUOTA
+
+
+# ---- kie 实际形态：HTTP 恒 200、错误码在 body code（2026-11-13 真机探测）----
+
+
+def _body_code_handler(code: int, msg: str):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": code, "msg": msg, "data": None})
+        raise AssertionError("should not reach recordInfo")
+
+    return handler
+
+
+@pytest.mark.parametrize("code,msg", [(401, "Unauthorized"), (402, "Credits insufficient : top up")])
+async def test_http200_body_quota_code_raises_av_upstream_quota(code, msg):
+    with pytest.raises(ServerException) as e:
+        await make_client(_body_code_handler(code, msg)).generate_dialogue_video(
+            b"img", "p", duration_seconds=5
+        )
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA
+
+
+async def test_http200_body_422_raises_av_upstream_failed():
+    with pytest.raises(ServerException) as e:
+        await make_client(_body_code_handler(422, "Invalid duration")).generate_dialogue_video(
+            b"img", "p", duration_seconds=5
+        )
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+
+
+async def test_http200_body_429_rate_limit_is_plain_failure():
+    # 纯限流 429（无 balance/credit 字样）→ 单产物失败，不得全局暂停整条产线
+    with pytest.raises(ServerException) as e:
+        await make_client(_body_code_handler(429, "Too many requests")).generate_dialogue_video(
+            b"img", "p", duration_seconds=5
+        )
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+
+
+async def test_http200_body_429_with_credit_keyword_is_quota():
+    with pytest.raises(ServerException) as e:
+        await make_client(
+            _body_code_handler(429, "credit limit reached")
+        ).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA
+
+
+async def test_http429_status_without_keyword_is_plain_failure():
+    # 旧判据按 HTTP 429 一律 QUOTA；拆分后无关键字 → FAILED
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(429, text="rate limited, slow down")
+        raise AssertionError("unreachable")
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+
+
+async def test_record_info_with_broken_param_field_still_parses():
+    # 真机实测：recordInfo 的 param 字段嵌套转义缺层 → 整体非法 JSON，
+    # resp.json() 直接抛 JSONDecodeError；解析必须容错（剥掉 param 再读）
+    broken = (
+        '{"code":200,"msg":"success","data":{"taskId":"t1","state":"success",'
+        '"param":"{\\"input\\":\\"{\\\\"aspect_ratio\\\\":\\\\"9:16\\\\"}\\"}",'
+        '"resultJson":"{\\"resultUrls\\":[\\"https://files.test/out.mp4\\"]}"}}'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": 200, "data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            return httpx.Response(200, content=broken.encode(), headers={"content-type": "application/json"})
+        if request.url.path.endswith("/out.mp4"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected: {request.url}")
+
+    out = await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert out == MP4
+
+
+async def test_record_info_real_broken_body_from_production_parses():
+    # Final review I1：真机抓到的 recordInfo 原文（param 多字段、转义缺层），
+    # 合成串测不出的形状——定向提取必须扛住它
+    from pathlib import Path
+
+    raw = (Path(__file__).parent / "data" / "kie_record_info_broken_real.json").read_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": 200, "data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            return httpx.Response(200, content=raw, headers={"content-type": "application/json"})
+        if "aiquickdraw.com" in str(request.url):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected: {request.url}")
+
+    out = await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert out == MP4
+
+
+async def test_poll_tolerates_transient_rate_limit_then_succeeds():
+    # Final review I4：轮询期撞限流 429 不得终结已计费任务，有限容忍后继续
+    polls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": 200, "data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            polls["n"] += 1
+            if polls["n"] <= 2:
+                return httpx.Response(200, json={"code": 429, "msg": "Too many requests"})
+            return httpx.Response(
+                200,
+                json={"code": 200, "data": {"state": "success",
+                      "resultJson": json.dumps({"resultUrls": ["https://files.test/out.mp4"]})}},
+            )
+        if request.url.path.endswith("/out.mp4"):
+            return httpx.Response(200, content=MP4)
+        raise AssertionError(f"unexpected: {request.url}")
+
+    out = await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert out == MP4
+    assert polls["n"] == 3
+
+
+async def test_poll_quota_error_still_raises_immediately():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": 200, "data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            calls["n"] += 1
+            return httpx.Response(200, json={"code": 402, "msg": "Credits insufficient"})
+        raise AssertionError(f"unexpected: {request.url}")
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA
+    assert calls["n"] == 1  # 配额错误不重试
+
+
+async def test_poll_persistent_transient_errors_eventually_fail():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/file-stream-upload"):
+            return httpx.Response(200, json={"data": {"downloadUrl": "https://files.test/x.png"}})
+        if request.url.path.endswith("/jobs/createTask"):
+            return httpx.Response(200, json={"code": 200, "data": {"taskId": "t1"}})
+        if request.url.path.endswith("/jobs/recordInfo"):
+            return httpx.Response(200, json={"code": 429, "msg": "Too many requests"})
+        raise AssertionError(f"unexpected: {request.url}")
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_dialogue_video(b"img", "p", duration_seconds=5)
+    assert e.value.code == codes.AV_UPSTREAM_FAILED

@@ -47,19 +47,14 @@ function delay<T>(v: T, ms = 220): Promise<T> {
 
 const MODELS: ModelsMap = {
   llm: [
-    { id: 'google/gemini-3.8-flash', name: 'Gemini 3.8 Flash', default: true },
-    { id: 'deepseek/deepseek-v3.2', name: 'DeepSeek V3.2' },
+    { id: 'gemini-3-8-flash-openai', name: 'Gemini 3.8 Flash', default: true },
   ],
   t2i: [
-    { id: 'google/gemini-3.1-flash-image', name: 'Gemini 3.1 Flash Image', default: true, reference: 'multi' },
-    { id: 'google/gemini-3-pro-image', name: 'Gemini 3 Pro Image', reference: 'multi' },
-    { id: 'google/gemini-nano-banana-2.1', name: 'Nano Banana 2.1', reference: 'multi' },
+    { id: 'nano-banana-2', name: 'Nano Banana 2', default: true, reference: 'multi' },
+    { id: 'seedream/5-5-text-to-image', name: 'Seedream 5.5（省钱档）', reference: 'none' },
   ],
   i2v: [
-    { id: 'bytedance/seedance-2.0-fast', name: 'Seedance 2.0 Fast', default: true },
-    { id: 'alibaba/wan-3.0', name: 'Wan 3.0' },
-    { id: 'kwaivgi/kling-v3.0-std', name: 'Kling 3.0 Std' },
-    { id: 'google/veo-3.1-fast', name: 'Veo 3.1 Fast' },
+    { id: 'bytedance/seedance-2-fast', name: 'Seedance 2 Fast', default: true },
   ],
   tts: [
     {
@@ -168,10 +163,10 @@ function makeShot(
     image_prompt: prompt,
     video_prompt: '',
     dialogue,
-    image: makeAsset(si, 'google/gemini-3.1-flash-image', si === 'success' ? imgUrl('BFDBFE', '1E3A8A', `Shot ${order}`) : null),
+    image: makeAsset(si, 'nano-banana-2', si === 'success' ? imgUrl('BFDBFE', '1E3A8A', `Shot ${order}`) : null),
     video: makeAsset(
       sv,
-      hasDialogue ? 'kie:gemini-omni-video' : 'bytedance/seedance-2.0-fast',
+      hasDialogue ? 'kie:gemini-omni-video' : 'bytedance/seedance-2-fast',
       sv === 'success' ? SAMPLE_VIDEO : null,
     ),
     audio: hasDialogue
@@ -185,9 +180,9 @@ function makeShot(
 }
 
 const DEFAULT_MODELS = {
-  llm: 'google/gemini-3.8-flash',
-  t2i: 'google/gemini-3.1-flash-image',
-  i2v: 'bytedance/seedance-2.0-fast',
+  llm: 'gemini-3-8-flash-openai',
+  t2i: 'nano-banana-2',
+  i2v: 'bytedance/seedance-2-fast',
   tts: 'openai/gpt-audio',
 }
 
@@ -749,10 +744,10 @@ export function updateShotMock(
     if (shot.dialogue.length > 0) {
       shot.audio = null
       shot.duration_estimate = estimateDialogueDuration(shot.dialogue)
-      if (shot.video.model === 'bytedance/seedance-2.0-fast') shot.video.model = 'kie:gemini-omni-video'
+      if (shot.video.model === 'bytedance/seedance-2-fast') shot.video.model = 'kie:gemini-omni-video'
     } else if (!shot.audio) {
       shot.audio = { ...makeAsset('pending', 'openai/gpt-audio', null), voice: 'alloy', duration: null }
-      if (shot.video.model === 'kie:gemini-omni-video') shot.video.model = 'bytedance/seedance-2.0-fast'
+      if (shot.video.model === 'kie:gemini-omni-video') shot.video.model = 'bytedance/seedance-2-fast'
     }
   }
   if (visualChanged) {

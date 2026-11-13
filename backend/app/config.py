@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     # kie.ai（对白镜音视同出渠道，功能见 docs/superpowers/specs/2026-11-09-av-dialogue-shots-design.md）
     KIE_API_KEY: str = ""
     KIE_BASE_URL: str = "https://api.kie.ai/api/v1"
+    # kie OpenAI 兼容同步 chat 端点（与 jobs 端点不同源，2026-11-13 真机核实）
+    KIE_CHAT_BASE_URL: str = "https://api.kie.ai/v1"
     KIE_UPLOAD_BASE_URL: str = "https://kieai.redpandaai.co/api"
     # 对白镜（音视同出）主模型 kie.ai / 兜底模型 OpenRouter
     AV_DIALOGUE_MODEL: str = "gemini-omni-video"

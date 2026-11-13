@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from collections.abc import Callable
 import uuid
 
 from app.application.dto.ai_video import (
@@ -217,6 +219,7 @@ class AvProjectService:
         model_defaults: dict[str, str] | None = None,
         voice_default: str = _FALLBACK_VOICE,
         whisper: AudioWordAligner | None = None,
+        model_known: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._uow = uow
         self._client = client
@@ -228,6 +231,8 @@ class AvProjectService:
         self._model_defaults = model_defaults or dict(_FALLBACK_MODELS)
         self._voice_default = voice_default
         self._whisper = whisper
+        # 注册表判据（deps 注入 is_known_model）；None = 不校验（兼容旧装配/测试）
+        self._model_known = model_known
 
     # ---------------- 内部取数 ----------------
 
@@ -378,7 +383,9 @@ class AvProjectService:
             f"请生成约 {target_lines} 句对白（每句一镜，单镜约 5 秒）。"
         )
         raw = await self._client.generate_json(
-            _SCRIPT_SYSTEM, user, model or project.default_models["llm"]
+            _SCRIPT_SYSTEM,
+            user,
+            self._resolve_model("llm", model or project.default_models["llm"]),
         )
         script = validate_script(raw)
         project.set_script(script)
@@ -505,6 +512,15 @@ class AvProjectService:
         AssetKind.AUDIO: "tts",
     }
 
+    def _resolve_model(self, kind_key: str, candidate: str) -> str:
+        """活配置回退：老项目落库的失效模型 id（如 OpenRouter 闭源系）
+        读取时回退到该能力线当前默认，不改库（kie 迁移决策 1）。"""
+        if self._model_known is None or self._model_known(kind_key, candidate):
+            return candidate
+        fallback = self._model_defaults.get(kind_key, candidate)
+        logger.info("av 模型已失效，读取回退：%s %s -> %s", kind_key, candidate, fallback)
+        return fallback
+
     async def generate_asset(
         self,
         project_id: int,
@@ -523,7 +539,10 @@ class AvProjectService:
             raise ParamException(codes.AV_PARAM_INVALID, "对白镜无独立配音")
         if kind == AssetKind.AUDIO and not shot.line_en.strip():
             raise ParamException(codes.AV_PRECONDITION_FAILED, "请先填写台词")
-        effective_model = model or project.default_models[self._KIND_MODEL_KEY[kind]]
+        kind_key = self._KIND_MODEL_KEY[kind]
+        effective_model = self._resolve_model(
+            kind_key, model or project.default_models[kind_key]
+        )
         effective_voice = voice or project.tts_voice if kind == AssetKind.AUDIO else None
         shot.mark_pending(kind, effective_model, effective_voice)
         project.touch()
@@ -552,7 +571,8 @@ class AvProjectService:
                     continue
                 if kind == AssetKind.AUDIO and (shot.has_dialogue or not shot.line_en.strip()):
                     continue
-                model = project.default_models[self._KIND_MODEL_KEY[kind]]
+                kind_key = self._KIND_MODEL_KEY[kind]
+                model = self._resolve_model(kind_key, project.default_models[kind_key])
                 voice = project.tts_voice if kind == AssetKind.AUDIO else None
                 shot.mark_pending(kind, model, voice)
                 planned.append((shot, kind, model, voice))

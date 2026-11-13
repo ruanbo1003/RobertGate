@@ -612,3 +612,69 @@ async def test_split_shots_resolves_names_and_video_prompt(project_service, uow,
     shots = await project_service.split_shots(1, model=None, confirm_replace=False)
     assert shots[0].video_prompt == "waves, push-in"
     assert shots[0].ref_character_ids == [1]
+
+
+# ---------------- 活配置回退（kie 迁移：老项目失效模型读取时回退新默认） ----------------
+
+
+@pytest.fixture
+def strict_service(uow, client, queue, storage, composer, runner):
+    """按生产 deps 的方式装配：model_known 用真注册表判据。"""
+    from app.infrastructure.data.av_models import default_model, is_known_model
+
+    @asynccontextmanager
+    async def uow_factory():
+        yield uow
+
+    return AvProjectService(
+        uow=uow,
+        client=client,
+        queue=queue,
+        storage=storage,
+        composer=composer,
+        runner=runner,
+        uow_factory=uow_factory,
+        model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
+        model_known=is_known_model,
+    )
+
+
+async def test_legacy_project_default_model_falls_back_to_new_default(strict_service, uow):
+    # 老项目存的是已死的 OpenRouter 闭源模型 id：不回退则每次生成必失败
+    from app.infrastructure.data.av_models import default_model
+
+    project = _project()
+    project.default_models = {**DEFAULT_MODELS, "t2i": "google/gemini-3.1-flash-image"}
+    shot = _shot()
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    await strict_service.generate_asset(1, 1, AssetKind.IMAGE, model=None, voice=None)
+    assert shot.image_model == default_model("t2i")
+
+
+async def test_legacy_llm_model_falls_back_for_script(strict_service, uow, client):
+    from app.infrastructure.data.av_models import default_model
+
+    project = _project()
+    project.default_models = {**DEFAULT_MODELS, "llm": "google/gemini-3.8-flash"}
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_project_characters.list_by_project = AsyncMock(
+        return_value=[AvProjectCharacter(project_id=1, character_id=1)]
+    )
+    uow.av_characters.find_by_id = AsyncMock(return_value=_character())
+    await strict_service.generate_script(1, model=None)
+    assert client.generate_json.await_args.args[2] == default_model("llm")
+
+
+async def test_known_model_is_used_as_is(strict_service, uow):
+    from app.infrastructure.data.av_models import default_model
+
+    project = _project()
+    project.default_models = {**DEFAULT_MODELS, "t2i": "seedream/5-5-text-to-image"}
+    shot = _shot()
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    await strict_service.generate_asset(1, 1, AssetKind.IMAGE, model=None, voice=None)
+    # 用户选的省钱档合法 → 原样使用，不被"回退"冲掉
+    assert shot.image_model == "seedream/5-5-text-to-image"
+    assert shot.image_model != default_model("t2i")

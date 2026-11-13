@@ -42,9 +42,9 @@
   "code": 0,
   "data": {
     "models": {
-      "llm":  [ { "id": "google/gemini-3.8-flash", "name": "Gemini 3.8 Flash", "default": true } ],
-      "t2i":  [ { "id": "google/gemini-3.1-flash-image", "name": "Gemini 3.1 Flash Image", "default": true, "reference": "multi" } ],
-      "i2v":  [ { "id": "bytedance/seedance-2.0-fast", "name": "Seedance 2.0 Fast", "default": true } ],
+      "llm":  [ { "id": "gemini-3-8-flash-openai", "name": "Gemini 3.8 Flash", "default": true } ],
+      "t2i":  [ { "id": "nano-banana-2", "name": "Nano Banana 2", "default": true, "reference": "multi" } ],
+      "i2v":  [ { "id": "bytedance/seedance-2-fast", "name": "Seedance 2.0 Fast", "default": true } ],
       "tts":  [ { "id": "openai/gpt-audio", "name": "GPT Audio", "default": true,
                   "voices": ["alex", "anna", "benjamin", "bella"] } ],
       "dialogue_video": [
@@ -57,7 +57,7 @@
 }
 ```
 
-`llm`/`t2i`/`i2v`/`tts` 来自 OpenRouter 单一 provider。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
+`llm`/`t2i`/`i2v`/`tts` 来自 kie.ai 单一主通道（对白镜兜底除外）。t2i 条目的 `reference` 为参考图能力档：`multi`（多参考图，生成分镜图时携带全部出场角色的封面设定图）或 `none`（纯 prompt，角色外形描述拼入 prompt 兜底）。
 
 `dialogue_video` 是**唯一跨渠道段，仅展示用，不可选择**：对白镜固定路由 kie.ai 主（`kie:gemini-omni-video`）+ OpenRouter 兜底（`openrouter:bytedance/seedance-2.0-fast`），`id` 即分镜 `video_model` 落库的实际渠道:模型 tag（见 5.2）。
 
@@ -148,7 +148,7 @@
 #### 请求
 
 ```json
-{ "model": "google/gemini-3.1-flash-image", "prompt": "可选，缺省用 appearance_prompt 拼接标准后缀" }
+{ "model": "nano-banana-2", "prompt": "可选，缺省用 appearance_prompt 拼接标准后缀" }
 ```
 
 #### 响应
@@ -214,7 +214,7 @@
   "synopsis": "Momo 和 Kuku 去超市买苹果，学习水果和购物用语",
   "character_ids": [1, 3],
   "target_duration": 90,
-  "default_models": { "llm": "google/gemini-3.8-flash", "t2i": "google/gemini-3.1-flash-image", "i2v": "bytedance/seedance-2.0-fast", "tts": "openai/gpt-audio" },
+  "default_models": { "llm": "gemini-3-8-flash-openai", "t2i": "nano-banana-2", "i2v": "bytedance/seedance-2-fast", "tts": "openai/gpt-audio" },
   "tts_voice": "alex"
 }
 ```
@@ -225,7 +225,7 @@
 | `synopsis` | 是 | 1-1000 字符 |
 | `character_ids` | 是 | 1-4 个已存在角色 |
 | `target_duration` | 是 | 30-120（秒） |
-| `default_models` | 否 | 缺省取各类型 default 模型 |
+| `default_models` | 否 | 缺省取各类型 default 模型；落库值若已不在注册表内（如迁移前的 OpenRouter id），生成时读取回退到当前 default 并打日志，不改库 |
 | `tts_voice` | 否 | 缺省取 tts 模型第一个 voice |
 
 ### 3.3 项目详情
@@ -393,12 +393,12 @@ LLM 把当前剧本拆为分镜列表（每镜一句短台词、生成画面 pro
 **POST** `/api/v1/ai-videos/projects/{id}/shots/{shot_id}/video`
 
 ```json
-{ "model": "bytedance/seedance-2.0-fast" }
+{ "model": "bytedance/seedance-2-fast" }
 ```
 
 该镜 `image.state != success` → `2003, "请先生成分镜图"`。以分镜图为首帧。
 
-`dialogue` 非空的对白镜：忽略请求体 `model`，固定走对白镜路由（kie.ai 主 + OpenRouter 兜底，见一.1 `dialogue_video`）——按台词与出场角色的 `voice_desc` 拼 prompt，一次生成带口型、带语音的视频（音视同出），主渠道失败自动降级到兜底。成功后 `video.model` 回填**实际生效**的渠道:模型（如 `kie:gemini-omni-video` 或降级后的 `openrouter:bytedance/seedance-2.0-fast`），供前端只读展示。`dialogue` 为空的纯画面镜走原 i2v 流程不变。
+`dialogue` 非空的对白镜：忽略请求体 `model`，固定走对白镜路由（kie.ai 主 + OpenRouter 兜底，见一.1 `dialogue_video`）——按台词与出场角色的 `voice_desc` 拼 prompt，一次生成带口型、带语音的视频（音视同出），主渠道失败自动降级到兜底（兜底仅在服务端配置了 OPENROUTER_API_KEY 时存在，否则主渠道错误直接返回）。成功后 `video.model` 回填**实际生效**的渠道:模型（如 `kie:gemini-omni-video` 或降级后的 `openrouter:bytedance/seedance-2.0-fast`），供前端只读展示。`dialogue` 为空的纯画面镜走原 i2v 流程不变。
 
 ### 5.3 生成配音
 
