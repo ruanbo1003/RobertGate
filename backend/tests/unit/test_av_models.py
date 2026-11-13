@@ -1,58 +1,66 @@
-"""模型注册表（OpenRouter-only）单测。"""
+"""模型注册表（kie.ai 主通道）单测。"""
 
 from app.infrastructure.data.av_models import (
     AV_MODELS,
     default_model,
     default_voice,
+    is_known_model,
     reference_mode,
+    snap_duration,
 )
 
 
-def test_registry_is_openrouter_only_and_typed():
+def test_registry_segments_and_shape():
     assert set(AV_MODELS) == {"llm", "t2i", "i2v", "tts", "dialogue_video"}
     for key, entries in AV_MODELS.items():
-        if key == "dialogue_video":
-            continue  # 对白镜唯一跨渠道段（kie.ai 主 + OpenRouter 兜底），仅展示用
         assert entries
-        for m in entries:
-            assert "provider" not in m
 
 
-def test_dialogue_video_segment_is_display_only_with_channel_tagged_ids():
-    entries = AV_MODELS["dialogue_video"]
-    assert entries
-    ids = {m["id"] for m in entries}
+def test_default_models_are_kie_ids():
+    assert default_model("llm") == "gemini-3-8-flash-openai"
+    assert default_model("t2i") == "nano-banana-2"
+    assert default_model("i2v") == "bytedance/seedance-2-fast"
+    assert default_model("tts") == "openai/gpt-audio"  # tts 不迁，原样保留
+
+
+def test_dialogue_video_segment_keeps_channel_tags():
+    ids = {m["id"] for m in AV_MODELS["dialogue_video"]}
     assert "kie:gemini-omni-video" in ids
     assert "openrouter:bytedance/seedance-2.0-fast" in ids
 
 
-def test_default_models():
-    assert default_model("llm") == "google/gemini-3.8-flash"
-    assert default_model("t2i") == "google/gemini-3.1-flash-image"
-    assert default_model("i2v") == "bytedance/seedance-2.0-fast"
-    assert default_model("tts") == "openai/gpt-audio"
-
-
-def test_reference_mode_multi_or_none_only():
+def test_reference_mode_resolves_for_new_default_t2i():
+    # Review Focus 1：匹配落空会静默返回 "none"，角色跨镜变脸
+    assert reference_mode(default_model("t2i")) == "multi"
     for m in AV_MODELS["t2i"]:
         assert m.get("reference") in ("multi", "none")
-    assert reference_mode("google/gemini-3.1-flash-image") == "multi"
     assert reference_mode("unknown/x") == "none"
+
+
+def test_snap_duration_resolves_for_new_default_i2v():
+    # Review Focus 1：匹配落空会静默掉进 max(2, min(10, s)) 兜底分支。
+    # 档位 [4,5,6,8] 为真机验证值（10s+ 因余额不足未探，见 spec 真机探测结果 #4）
+    model = default_model("i2v")
+    assert snap_duration(model, 3) == 4
+    assert snap_duration(model, 5) == 5
+    assert snap_duration(model, 7) == 6  # 平手取小
+    assert snap_duration(model, 99) == 8
+    assert snap_duration("unknown/x", 99) == 10
+    assert snap_duration("unknown/x", 1) == 2
+
+
+def test_is_known_model_rejects_retired_openrouter_id():
+    assert is_known_model("t2i", "google/gemini-3.1-flash-image") is False
+    assert is_known_model("llm", "google/gemini-3.8-flash") is False
+    assert is_known_model("i2v", "bytedance/seedance-2.0-fast") is False
+
+
+def test_is_known_model_accepts_current_entries():
+    for seg in ("llm", "t2i", "i2v", "tts"):
+        for m in AV_MODELS[seg]:
+            assert is_known_model(seg, m["id"]) is True
 
 
 def test_default_voice_matches_default_tts_model():
     tts = next(m for m in AV_MODELS["tts"] if m.get("default"))
     assert default_voice() == tts["voices"][0]
-
-
-def test_snap_duration_per_model():
-    from app.infrastructure.data.av_models import snap_duration
-
-    assert snap_duration("bytedance/seedance-2.0-fast", 3) == 4
-    assert snap_duration("bytedance/seedance-2.0-fast", 99) == 15
-    assert snap_duration("kwaivgi/kling-v3.0-std", 2) == 3
-    assert snap_duration("google/veo-3.1-fast", 5) == 4  # 平手取小
-    assert snap_duration("google/veo-3.1-fast", 7) == 6
-    assert snap_duration("alibaba/wan-3.0", 2) == 2
-    assert snap_duration("unknown/x", 99) == 10
-    assert snap_duration("unknown/x", 1) == 2

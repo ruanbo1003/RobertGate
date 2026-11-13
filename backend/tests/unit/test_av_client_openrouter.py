@@ -130,7 +130,9 @@ async def test_generate_video_full_flow_and_duration_snap():
     )
     assert out == MP4
     assert polls["n"] == 2
-    assert captured["duration"] == 15  # snap 到 seedance 允许档位上限
+    # seedance 旧 id 已随注册表迁 kie 退出 i2v 段：snap 落 clamp [2,10]。
+    # 对白镜兜底是唯一调用方，router 已按 ladder (4,6,8,10) 预吸附，clamp 恒等透传。
+    assert captured["duration"] == 10
     assert captured["aspect_ratio"] == "9:16"
     assert captured["resolution"] == "720p"
     frame = captured["frame_images"][0]
