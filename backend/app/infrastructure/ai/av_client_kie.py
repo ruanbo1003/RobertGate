@@ -123,33 +123,44 @@ class KieVideoClient:
         return url
 
     async def _create_task(self, image_url: str, prompt: str, duration_seconds: int) -> str:
-        payload = {
-            "model": self._model,
-            "input": {
+        return await self._create_task_for(
+            self._model,
+            {
                 "prompt": prompt,
                 "image_urls": [image_url],
                 "duration": _snap_duration(duration_seconds),
                 "aspect_ratio": "9:16",
                 "resolution": "720p",
             },
-        }
+            "创建任务",
+        )
+
+    async def _create_task_for(self, model: str, task_input: dict, what: str) -> str:
+        """通用 createTask：任意模型 + input，返回 taskId。"""
+        payload = {"model": model, "input": task_input}
         try:
             async with self._http(60.0) as client:
                 resp = await client.post(
                     f"{self._base}/jobs/createTask", headers=self._headers, json=payload
                 )
         except httpx.HTTPError as e:
-            raise ServerException(codes.AV_UPSTREAM_FAILED, f"创建任务网络错误：{e}") from e
-        task_id = ((_parse_body(resp, "创建任务").get("data") or {}).get("taskId"))
+            raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what}网络错误：{e}") from e
+        task_id = ((_parse_body(resp, what).get("data") or {}).get("taskId"))
         if not task_id:
-            raise ServerException(codes.AV_UPSTREAM_FAILED, "创建任务响应缺少 taskId")
+            raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what}响应缺少 taskId")
         return task_id
 
     async def _poll_result_url(self, task_id: str) -> str:
+        return await self._poll_result(task_id, self._poll_interval, "对白镜生成")
+
+    async def _poll_result(self, task_id: str, interval: float, what: str) -> str:
+        """通用轮询：success → resultJson.resultUrls[0]；fail → 抛错；
+        未知 state 继续轮，超时消息带最后一次 state 便于排障。"""
         waited = 0.0
+        last_state = ""
         while waited <= self._poll_timeout:
-            await asyncio.sleep(self._poll_interval)
-            waited += max(self._poll_interval, 1.0)
+            await asyncio.sleep(interval)
+            waited += max(interval, 1.0)
             try:
                 async with self._http(60.0) as client:
                     resp = await client.get(
@@ -158,9 +169,10 @@ class KieVideoClient:
                         params={"taskId": task_id},
                     )
             except httpx.HTTPError as e:
-                raise ServerException(codes.AV_UPSTREAM_FAILED, f"查询任务网络错误：{e}") from e
-            data = _parse_body(resp, "查询任务").get("data") or {}
+                raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what}查询网络错误：{e}") from e
+            data = _parse_body(resp, f"{what}查询").get("data") or {}
             state = str(data.get("state") or "").lower()
+            last_state = state or last_state
             if state == "success":
                 result_json = data.get("resultJson")
                 if isinstance(result_json, str):
@@ -176,8 +188,10 @@ class KieVideoClient:
                 return urls[0]
             if state in ("fail", "failed", "error"):
                 reason = str(data.get("failMsg") or data.get("error") or "unknown")[:200]
-                raise ServerException(codes.AV_UPSTREAM_FAILED, f"对白镜生成失败：{reason}")
-        raise ServerException(codes.AV_UPSTREAM_FAILED, "对白镜生成超时")
+                raise ServerException(codes.AV_UPSTREAM_FAILED, f"{what}失败：{reason}")
+        raise ServerException(
+            codes.AV_UPSTREAM_FAILED, f"{what}超时（最后状态 {last_state or 'unknown'}）"
+        )
 
     async def _download(self, url: str) -> bytes:
         try:
