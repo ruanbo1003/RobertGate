@@ -17,6 +17,7 @@ import type {
   Script,
   Shot,
   ShotPatch,
+  UpdateProjectPayload,
 } from '../types/aiVideos'
 import * as mock from './aiVideos.mock'
 
@@ -125,6 +126,14 @@ export function createProject(
 export function getProject(id: number): Promise<ApiResponse<{ project: ProjectDetail } | null>> {
   if (USE_MOCK) return mock.getProjectMock(id)
   return request(`/projects/${id}`)
+}
+
+export function updateProject(
+  id: number,
+  payload: UpdateProjectPayload,
+): Promise<ApiResponse<{ project: ProjectDetail } | null>> {
+  if (USE_MOCK) return mock.updateProjectMock(id, payload)
+  return request(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
 }
 
 export function deleteProject(id: number): Promise<ApiResponse<null>> {

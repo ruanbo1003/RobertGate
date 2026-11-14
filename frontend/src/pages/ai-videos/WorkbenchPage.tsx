@@ -30,6 +30,8 @@ import {
   splitShots,
   updateScript,
   updateShot,
+  generateScript,
+  updateProject,
 } from '../../services/aiVideos'
 
 const STATUS_LABEL: Record<string, { label: string; cls: string }> = {
@@ -53,6 +55,9 @@ export default function WorkbenchPage() {
   const [banner, setBanner] = useState('')
   const [scriptOpen, setScriptOpen] = useState(false)
   const [scriptSaving, setScriptSaving] = useState(false)
+  const [scriptGenerating, setScriptGenerating] = useState(false)
+  const [scriptGenError, setScriptGenError] = useState('')
+  const [scriptVersion, setScriptVersion] = useState(0)
   const [composeBusy, setComposeBusy] = useState(false)
   const [staleConfirm, setStaleConfirm] = useState<StaleItem[] | null>(null)
   const [resplitScript, setResplitScript] = useState<Script | null>(null)
@@ -222,6 +227,30 @@ export default function WorkbenchPage() {
     void reload()
   }
 
+  const handleScriptGenerate = async (synopsis: string) => {
+    if (!project) return
+    setScriptGenerating(true)
+    setScriptGenError('')
+    if (synopsis && synopsis !== project.synopsis) {
+      const up = await updateProject(pid, { synopsis })
+      if (up.code !== 0) {
+        setScriptGenError(up.message)
+        setScriptGenerating(false)
+        return
+      }
+      setProject((prev) => (prev ? { ...prev, synopsis } : prev))
+    }
+    const res = await generateScript(pid, project.default_models.llm)
+    setScriptGenerating(false)
+    if (res.code !== 0 || !res.data) {
+      setScriptGenError(res.message || '生成失败，请重试')
+      return
+    }
+    const script = res.data.script
+    setProject((prev) => (prev ? { ...prev, script } : prev))
+    setScriptVersion((v) => v + 1)
+  }
+
   const handleScriptSave = async (script: Script) => {
     setScriptSaving(true)
     const res = await updateScript(pid, script)
@@ -378,6 +407,11 @@ export default function WorkbenchPage() {
       <ScriptDrawer
         open={scriptOpen}
         script={project.script}
+        synopsis={project.synopsis}
+        generating={scriptGenerating}
+        generateError={scriptGenError}
+        scriptVersion={scriptVersion}
+        onGenerate={handleScriptGenerate}
         characters={project.characters}
         saving={scriptSaving}
         onClose={() => setScriptOpen(false)}

@@ -22,6 +22,7 @@ import type {
   ShotAudioAsset,
   ShotPatch,
   StaleItem,
+  UpdateProjectPayload,
 } from '../types/aiVideos'
 
 /** 按产物类型取对应资产（audio 可能为 null）——统一出入口，避免到处写动态索引。 */
@@ -603,6 +604,19 @@ export function createProjectMock(
 export function getProjectMock(id: number): Promise<ApiResponse<{ project: ProjectDetail } | null>> {
   const p = projects.find((x) => x.id === id)
   if (!p) return delay(err(2007, '项目不存在'))
+  return delay(ok({ project: toDetail(p) }))
+}
+
+export function updateProjectMock(
+  id: number,
+  payload: UpdateProjectPayload,
+): Promise<ApiResponse<{ project: ProjectDetail } | null>> {
+  const p = projects.find((x) => x.id === id)
+  if (!p) return delay(err(2007, '项目不存在'))
+  if (payload.title?.trim()) p.title = payload.title.trim()
+  if (payload.synopsis?.trim()) p.synopsis = payload.synopsis.trim()
+  if (payload.tts_voice) p.tts_voice = payload.tts_voice
+  if (payload.default_models) Object.assign(p.default_models, payload.default_models)
   return delay(ok({ project: toDetail(p) }))
 }
 
