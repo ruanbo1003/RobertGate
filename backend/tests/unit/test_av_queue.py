@@ -208,8 +208,10 @@ async def test_image_multi_mode_sends_all_covers_in_order(queue, store, client):
     await drain(queue)
     kind, prompt, model, ref = client.calls[0]
     assert ref == [b"cover-bytes", b"cover2-bytes"]
-    assert "Momo is the character in reference image 1" in prompt
-    assert "Kuku is the character in reference image 2" in prompt
+    # 点名必须同时带外形描述：nano-banana 的参考图跟随力弱于场景文本，
+    # 只点名("Jack is ...")会被当成人名出真人（2026-11-14 线上翻车 + 真机 A/B 实证）
+    assert "Momo is the character in reference image 1: a cute fox." in prompt
+    assert "Kuku is the character in reference image 2: a small bear." in prompt
     # 参考图是多视角设定图：必须声明只取外形、不得复刻 sheet 版式
     assert "do not copy the character-sheet layout" in prompt
     assert prompt.endswith("prompt 1")

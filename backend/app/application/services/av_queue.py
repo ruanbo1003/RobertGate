@@ -203,8 +203,11 @@ class AvGenerationQueue:
     ) -> tuple[str, list[bytes]]:
         """按模型参考能力拼装分镜图请求。
 
-        multi：有封面的出场角色按序进参考图并点名，无封面的拼外形描述；
-        none：全部角色拼外形描述。点名/兜底文本只在此动态生成，不落库。
+        multi：有封面的出场角色按序进参考图并点名——点名必须同时带外形
+        描述（nano-banana 的参考图跟随力弱于场景文本，只点名会被当成
+        人名出真人，2026-11-14 线上翻车 + 真机 A/B 实证）；无封面的拼
+        外形描述；none：全部角色拼外形描述。点名/兜底文本只在此动态
+        生成，不落库。
         """
         mode = self._reference_mode(model)
         refs: list[bytes] = []
@@ -221,7 +224,8 @@ class AvGenerationQueue:
             if cover_bytes is not None:
                 refs.append(cover_bytes)
                 prefix_parts.append(
-                    f"{char.name} is the character in reference image {len(refs)}."
+                    f"{char.name} is the character in reference image {len(refs)}: "
+                    f"{char.appearance_prompt}."
                 )
             else:
                 prefix_parts.append(f"{char.name}: {char.appearance_prompt}.")
