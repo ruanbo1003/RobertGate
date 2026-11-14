@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -51,6 +52,10 @@ class KieAvClient(KieVideoClient):
         )
         self._chat_base = chat_base.rstrip("/")
         self._image_poll_interval = image_poll_interval
+        # chat 瞬时错误重试（kie 端点偶发 "please try again later"，2026-11-14 实录）：
+        # 调用幂等且便宜，与轮询的瞬时容忍（final review I4）同一语义；配额错误不重试
+        self._retry_times = 2
+        self._retry_wait = 1.5
 
     # ---------------- t2i ----------------
 
@@ -95,6 +100,20 @@ class KieAvClient(KieVideoClient):
     # ---------------- llm ----------------
 
     async def generate_json(self, system: str, user: str, model: str) -> dict:
+        last: ServerException | None = None
+        for attempt in range(1 + self._retry_times):
+            try:
+                return await self._generate_json_once(system, user, model)
+            except ServerException as e:
+                if e.code == codes.AV_UPSTREAM_QUOTA:
+                    raise
+                last = e
+                if attempt < self._retry_times:
+                    await asyncio.sleep(self._retry_wait)
+        assert last is not None
+        raise last
+
+    async def _generate_json_once(self, system: str, user: str, model: str) -> dict:
         payload = {
             "model": model,
             "messages": [
