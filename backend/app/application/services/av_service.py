@@ -220,6 +220,7 @@ class AvProjectService:
         voice_default: str = _FALLBACK_VOICE,
         whisper: AudioWordAligner | None = None,
         model_known: Callable[[str, str], bool] | None = None,
+        image_reference_mode: Callable[[str], str] | None = None,
     ) -> None:
         self._uow = uow
         self._client = client
@@ -233,6 +234,8 @@ class AvProjectService:
         self._whisper = whisper
         # 注册表判据（deps 注入 is_known_model）；None = 不校验（兼容旧装配/测试）
         self._model_known = model_known
+        # t2i 参考图能力档判据（deps 注入 reference_mode）；None = 不校验
+        self._image_reference_mode = image_reference_mode
 
     # ---------------- 内部取数 ----------------
 
@@ -515,11 +518,21 @@ class AvProjectService:
     def _resolve_model(self, kind_key: str, candidate: str) -> str:
         """活配置回退：老项目落库的失效模型 id（如 OpenRouter 闭源系）
         读取时回退到该能力线当前默认，不改库（kie 迁移决策 1）。"""
-        if self._model_known is None or self._model_known(kind_key, candidate):
-            return candidate
-        fallback = self._model_defaults.get(kind_key, candidate)
-        logger.info("av 模型已失效，读取回退：%s %s -> %s", kind_key, candidate, fallback)
-        return fallback
+        if self._model_known is not None and not self._model_known(kind_key, candidate):
+            fallback = self._model_defaults.get(kind_key, candidate)
+            logger.info("av 模型已失效，读取回退：%s %s -> %s", kind_key, candidate, fallback)
+            candidate = fallback
+        # 分镜图只能用带参考图（multi）的模型：none 档会丢角色一致性
+        # （Robert 2026-11-14 拍板；角色设定图不走此路径不受限）
+        if (
+            kind_key == "t2i"
+            and self._image_reference_mode is not None
+            and self._image_reference_mode(candidate) != "multi"
+        ):
+            fallback = self._model_defaults.get("t2i", candidate)
+            logger.info("分镜图模型无参考图能力，回退：%s -> %s", candidate, fallback)
+            candidate = fallback
+        return candidate
 
     async def generate_asset(
         self,

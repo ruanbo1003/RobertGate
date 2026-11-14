@@ -114,7 +114,8 @@ export default function ShotEditor({
       icon: ImageIcon,
       model: imageModel,
       setModel: setImageModel,
-      options: models.t2i ?? [],
+      // 分镜图只能用带参考图的模型：none 档会丢角色一致性（后端同规则回退兜底）
+      options: (models.t2i ?? []).filter((m) => m.reference === 'multi'),
       canGenerate: true,
     },
     {

@@ -264,6 +264,7 @@ async def get_av_project_service(
         uow_factory=new_uow,
         model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
         model_known=is_known_model,
+        image_reference_mode=reference_mode,
         voice_default=default_voice(),
         whisper=get_whisper_aligner(),
     )

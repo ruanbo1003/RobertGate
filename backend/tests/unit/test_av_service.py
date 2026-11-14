@@ -620,7 +620,11 @@ async def test_split_shots_resolves_names_and_video_prompt(project_service, uow,
 @pytest.fixture
 def strict_service(uow, client, queue, storage, composer, runner):
     """按生产 deps 的方式装配：model_known 用真注册表判据。"""
-    from app.infrastructure.data.av_models import default_model, is_known_model
+    from app.infrastructure.data.av_models import (
+        default_model,
+        is_known_model,
+        reference_mode,
+    )
 
     @asynccontextmanager
     async def uow_factory():
@@ -636,6 +640,7 @@ def strict_service(uow, client, queue, storage, composer, runner):
         uow_factory=uow_factory,
         model_defaults={t: default_model(t) for t in ("llm", "t2i", "i2v", "tts")},
         model_known=is_known_model,
+        image_reference_mode=reference_mode,
     )
 
 
@@ -670,11 +675,38 @@ async def test_known_model_is_used_as_is(strict_service, uow):
     from app.infrastructure.data.av_models import default_model
 
     project = _project()
+    project.default_models = {**DEFAULT_MODELS, "t2i": "nano-banana-2-1"}
+    shot = _shot()
+    uow.av_projects.find_by_id = AsyncMock(return_value=project)
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    await strict_service.generate_asset(1, 1, AssetKind.IMAGE, model=None, voice=None)
+    # 用户选的合法 multi 模型 → 原样使用，不被"回退"冲掉
+    assert shot.image_model == "nano-banana-2-1"
+    assert shot.image_model != default_model("t2i")
+
+
+async def test_shot_image_rejects_non_reference_model(strict_service, uow):
+    # 分镜图只能用带参考图(multi)的模型:选了 none 档(如 seedream)会丢
+    # 角色一致性,取用侧回退默认(Robert 2026-11-14 拍板)
+    from app.infrastructure.data.av_models import default_model
+
+    project = _project()
     project.default_models = {**DEFAULT_MODELS, "t2i": "seedream/5-5-text-to-image"}
     shot = _shot()
     uow.av_projects.find_by_id = AsyncMock(return_value=project)
     uow.av_shots.find_by_id = AsyncMock(return_value=shot)
     await strict_service.generate_asset(1, 1, AssetKind.IMAGE, model=None, voice=None)
-    # 用户选的省钱档合法 → 原样使用，不被"回退"冲掉
-    assert shot.image_model == "seedream/5-5-text-to-image"
-    assert shot.image_model != default_model("t2i")
+    assert shot.image_model == default_model("t2i")
+
+
+async def test_shot_image_explicit_non_reference_model_also_falls_back(strict_service, uow):
+    from app.infrastructure.data.av_models import default_model
+
+    shot = _shot()
+    uow.av_projects.find_by_id = AsyncMock(return_value=_project())
+    uow.av_shots.find_by_id = AsyncMock(return_value=shot)
+    await strict_service.generate_asset(
+        1, 1, AssetKind.IMAGE, model="gpt-image-2-6/economy-text-to-image", voice=None
+    )
+    assert shot.image_model == default_model("t2i")
+
