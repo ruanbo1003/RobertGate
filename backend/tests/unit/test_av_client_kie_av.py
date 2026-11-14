@@ -185,3 +185,52 @@ async def test_generate_json_body_error_code_maps():
     with pytest.raises(ServerException) as e:
         await make_client(handler).generate_json("s", "u", "m")
     assert e.value.code == codes.AV_UPSTREAM_QUOTA
+
+
+async def test_generate_json_retries_transient_500_then_succeeds():
+    # kie chat 端点瞬时抖动（"internal error, please try again later."）：
+    # 同步幂等调用加有限重试，与轮询的瞬时容忍（final review I4）同一语义
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(200, json={"code": 500, "msg": "internal error, please try again later."})
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"role": "assistant", "content": '{"ok": true}'}}]},
+        )
+
+    c = make_client(handler)
+    c._retry_wait = 0.0
+    out = await c.generate_json("s", "u", "gemini-4-carbon-openai")
+    assert out == {"ok": True}
+    assert calls["n"] == 2
+
+
+async def test_generate_json_quota_error_does_not_retry():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={"code": 402, "msg": "Credits insufficient"})
+
+    with pytest.raises(ServerException) as e:
+        await make_client(handler).generate_json("s", "u", "m")
+    assert e.value.code == codes.AV_UPSTREAM_QUOTA
+    assert calls["n"] == 1
+
+
+async def test_generate_json_persistent_500_fails_after_retries():
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(200, json={"code": 500, "msg": "internal error"})
+
+    c = make_client(handler)
+    c._retry_wait = 0.0
+    with pytest.raises(ServerException) as e:
+        await c.generate_json("s", "u", "m")
+    assert e.value.code == codes.AV_UPSTREAM_FAILED
+    assert calls["n"] == 3  # 1 次原始 + 2 次重试
