@@ -176,6 +176,13 @@ export interface CreateProjectPayload {
   tts_voice?: string
 }
 
+export interface UpdateProjectPayload {
+  title?: string
+  synopsis?: string
+  default_models?: Partial<DefaultModels>
+  tts_voice?: string
+}
+
 export interface GenerateAllPayload {
   types: AssetKind[]
   scope: 'missing' | 'all'
