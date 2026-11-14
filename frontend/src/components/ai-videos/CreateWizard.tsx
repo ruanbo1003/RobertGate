@@ -351,7 +351,7 @@ export default function CreateWizard({
             <ModelSelect
               label="文生图模型"
               value={defaultModels.t2i}
-              options={models.t2i ?? []}
+              options={(models.t2i ?? []).filter((m) => m.reference === 'multi')}
               onChange={(id) => setDefaultModels((m) => ({ ...m, t2i: id }))}
             />
             <ModelSelect
