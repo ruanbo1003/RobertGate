@@ -710,3 +710,29 @@ async def test_shot_image_explicit_non_reference_model_also_falls_back(strict_se
     )
     assert shot.image_model == default_model("t2i")
 
+
+
+def test_script_system_carries_director_rules():
+    """分镜导演规则(Robert 2026-11-14 拍板,14 条清单):场景规划/景别节奏/
+    动线/动作衔接的关键条款必须在 system prompt 里,防止后续改动静默丢失。"""
+    from app.application.services.av_service import _SCRIPT_SYSTEM
+
+    s = _SCRIPT_SYSTEM
+    # 一、场景逻辑
+    assert "Location:" in s and "Props:" in s and "Route:" in s  # 结构化 setting
+    assert "不同种类的水果不得长在同一棵树上" in s  # 物理合理(含典型反例)
+    assert "只能使用本场景 Props 清单中的物体" in s  # 道具封闭
+    # 二、景别节奏
+    assert "Wide" in s and "Close-up" in s  # 景别词开头约定
+    assert "第一镜用 Wide" in s
+    assert "不得连续三镜使用相同景别" in s
+    assert "两名及以上角色出场的镜，景别不得小于 Medium" in s  # 对白镜同框
+    # 三、video_prompt
+    assert "从 image_prompt 定格的姿态开始延续" in s
+    assert "不得引入 image_prompt 中不存在的物体或角色" in s
+    assert "一个主要动作" in s
+    # 五、动线
+    assert "不得瞬移" in s
+    assert "边走边" in s
+    # 四、物种行为
+    assert "符合其物种的行为方式" in s
