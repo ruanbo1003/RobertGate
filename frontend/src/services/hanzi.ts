@@ -7,6 +7,7 @@
 // 默认 true，直到后端接口上线。
 
 import type { ApiResponse } from '../types/auth'
+import { checkUnauthorized } from './http'
 import type {
   AiAddResponse,
   CreateCharacterRequest,
@@ -43,7 +44,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
     if (!res.ok && res.status >= 500) {
       return { code: 5000, data: null as T, message: '服务器异常，请稍后重试' }
     }
-    return await res.json()
+    return checkUnauthorized(await res.json())
   } catch (e) {
     if (e instanceof TypeError) {
       return { code: 5001, data: null as T, message: '网络连接失败，请检查网络' }

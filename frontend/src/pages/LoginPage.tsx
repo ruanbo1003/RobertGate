@@ -18,7 +18,11 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const from = (location.state as { from?: Location } | null)?.from?.pathname ?? '/'
+  // 优先 ?redirect=(全局 1001 拦截跳转时带上,见 services/http.ts),其次路由 state
+  const from =
+    new URLSearchParams(location.search).get('redirect') ??
+    (location.state as { from?: Location } | null)?.from?.pathname ??
+    '/'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

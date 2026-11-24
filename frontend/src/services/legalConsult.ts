@@ -4,6 +4,7 @@
 // VITE_LEGAL_MOCK：true → 走 legalConsult.mock.ts；false → 走真实后端。默认 true。
 
 import type { ApiResponse } from '../types/auth'
+import { checkUnauthorized } from './http'
 import type {
   LawArticleResponse,
   LegalMessagesResponse,
@@ -33,7 +34,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<ApiRespo
     if (!res.ok && res.status >= 500) {
       return { code: 5000, data: null as T, message: '服务器异常，请稍后重试' }
     }
-    return await res.json()
+    return checkUnauthorized(await res.json())
   } catch (e) {
     if (e instanceof TypeError) {
       return { code: 5001, data: null as T, message: '网络连接失败，请检查网络' }
@@ -87,7 +88,7 @@ export async function sendMessage(
   const contentType = res.headers.get('content-type') ?? ''
   if (!contentType.includes('text/event-stream')) {
     try {
-      const json = (await res.json()) as ApiResponse<null>
+      const json = checkUnauthorized((await res.json()) as ApiResponse<null>)
       handlers.onError(json.code, json.message)
     } catch {
       handlers.onError(5000, '服务器异常，请稍后重试')
